@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"stackdriver-monitoring-simple-reporter/pkg/service"
-	"strings"
 )
 
 func main() {

@@ -37,12 +37,7 @@ func NewExportService(ctx context.Context) (*ExportService) {
 }
 
 func (es *ExportService) newMetricExporter() metric_exporter.MetricExporter {
-	switch es.conf.ExporterClass {
-	case "GCSExporter":
-		return metric_exporter.NewGCSExporter(es.conf)
-	default:
-		return metric_exporter.NewFileExporter(es.conf)
-	}
+	return metric_exporter.NewGCSExporter(es.conf)
 }
 
 func (es *ExportService) init(ctx context.Context) (*ExportService) {

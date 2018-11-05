@@ -1,3 +1,2 @@
 timezone: 8
-exporter: GCSExporter
 destination: <GCS_BUCKET_NAME>
