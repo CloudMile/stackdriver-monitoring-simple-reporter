@@ -1,0 +1,10 @@
+cron:
+- description: "Weekly metrics report job"
+  url: /cron/weekly-report
+  schedule: every monday 03:10
+  timezone: Asia/Taipei
+
+- description: "Monthly metrics report job"
+  url: /cron/monthly-report
+  schedule: 1 of month 03:10
+  timezone: Asia/Taipei
