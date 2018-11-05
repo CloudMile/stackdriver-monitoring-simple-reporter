@@ -13,7 +13,7 @@ import (
 )
 
 const PointCSVHeader = "timestamp,datetime,value"
-const AggregationAlignmentPeriod = "1h"
+const AggregationAlignmentPeriod = "3600s"
 const AggregationPerSeriesAlignerRate = "ALIGN_RATE"
 const AggregationPerSeriesAlignerMean = "ALIGN_MEAN"
 const MinutesOneDay = 60 * 24
@@ -31,12 +31,33 @@ type MonitoringClient struct {
 
 func (c *MonitoringClient) SetTimezone(timezone int) {
 	c.TimeZone = timezone
+}
 
+// Previous week
+func (c *MonitoringClient) SetWeekly() {
 	local := c.Location()
 	now := time.Now().In(local)
 
-	c.EndTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, local).UTC()
-	c.StartTime = c.EndTime.AddDate(0, 0, -1)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, local).UTC()
+
+	d := (int)(today.Weekday())
+	c.EndTime = today.AddDate(0, 0, -d)
+	c.StartTime = c.EndTime.AddDate(0, 0, -7)
+
+	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
+	c.IntervalStartTime = c.StartTime.Format("2006-01-02T15:04:05.000000000Z")
+
+	log.Printf("%s", c.IntervalEndTime)
+	log.Printf("%s", c.IntervalStartTime)
+}
+
+// Previous month
+func (c *MonitoringClient) SetMonthly() {
+	local := c.Location()
+	now := time.Now().In(local)
+
+	c.EndTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, local).UTC()
+	c.StartTime = c.EndTime.AddDate(0, -1, 0)
 
 	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
 	c.IntervalStartTime = c.StartTime.Format("2006-01-02T15:04:05.000000000Z")
@@ -125,7 +146,7 @@ func MakeAgentMemoryFilter(metric, instanceName string) string {
 	return fmt.Sprintf(`metric.type="%s" AND metadata.user_labels.name="%s" AND metric.labels.state="%s"`, metric, instanceName, "used")
 }
 
-func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string) {
+func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter, intervalStartTime, intervalEndTime string) (metricPoints []string) {
 	client := c.getClient()
 
 	svc, err := monitoring.New(client)
@@ -137,8 +158,8 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 
 	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
 	projectsTimeSeriesListCall.Filter(filter)
-	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
-	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
+	projectsTimeSeriesListCall.IntervalStartTime(intervalStartTime)
+	projectsTimeSeriesListCall.IntervalEndTime(intervalEndTime)
 	projectsTimeSeriesListCall.AggregationPerSeriesAligner(aligner)
 	projectsTimeSeriesListCall.AggregationAlignmentPeriod(AggregationAlignmentPeriod)
 

@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"google.golang.org/appengine"
+	"log"
 	"net/http"
+	"stackdriver-monitoring-simple-reporter/pkg/service"
+	"strings"
 )
 
 func main() {
@@ -23,8 +26,8 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 func weeklyJobHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := appengine.NewContext(r)
 
-	// TODO: set time ranges
 	exportService := service.NewExportService(ctx)
+	exportService.SetWeekly()
 	exportService.Do(ctx)
 
 	fmt.Fprint(w, "Weekly Job Done")
@@ -33,8 +36,8 @@ func weeklyJobHandler(w http.ResponseWriter, r *http.Request) {
 func monthlyJobHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := appengine.NewContext(r)
 
-	// TODO: set time ranges
 	exportService := service.NewExportService(ctx)
+	exportService.SetMonthly()
 	exportService.Do(ctx)
 
 	fmt.Fprint(w, "Monthly Job Done")
@@ -42,37 +45,28 @@ func monthlyJobHandler(w http.ResponseWriter, r *http.Request) {
 
 // Export Metric Points to CSV
 func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%v, %v, %v, %v, %v, %v",
+	log.Printf("%v, %v, %v, %v, %v, %v, %v",
 		r.FormValue("projectID"),
 		r.FormValue("metric"),
 		r.FormValue("aligner"),
 		r.FormValue("filter"),
 		r.FormValue("instanceName"),
-		strings.Split(r.FormValue("attendNames"), "|"),
+		r.FormValue("intervalStartTime"),
+		r.FormValue("intervalEndTime"),
 	)
 
 	ctx := appengine.NewContext(r)
 	exportService := service.NewExportService(ctx)
 
-	attendNamesStr := r.FormValue("attendNames")
-	if attendNamesStr == "" {
-		exportService.Export(
-			r.FormValue("projectID"),
-			r.FormValue("metric"),
-			r.FormValue("aligner"),
-			r.FormValue("filter"),
-			r.FormValue("instanceName"),
-		)
-	} else {
-		exportService.Export(
-			r.FormValue("projectID"),
-			r.FormValue("metric"),
-			r.FormValue("aligner"),
-			r.FormValue("filter"),
-			r.FormValue("instanceName"),
-			strings.Split(attendNamesStr, "|")...,
-		)
-	}
+	exportService.Export(
+		r.FormValue("projectID"),
+		r.FormValue("metric"),
+		r.FormValue("aligner"),
+		r.FormValue("filter"),
+		r.FormValue("instanceName"),
+		r.FormValue("intervalStartTime"),
+		r.FormValue("intervalEndTime"),
+	)
 
 	fmt.Fprint(w, "Done")
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"stackdriver-monitoring-exporter/pkg/gcp/stackdriver"
-	"stackdriver-monitoring-exporter/pkg/utils"
+	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
+	"stackdriver-monitoring-simple-reporter/pkg/utils"
 )
 
 type GCSExporter struct {

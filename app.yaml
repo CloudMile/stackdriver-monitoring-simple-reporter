@@ -1,7 +1,9 @@
 runtime: go111
 
 handlers:
-- url: /cron/metrics-export
+- url: /cron/weekly-report
+  script: _go_app
+- url: /cron/monthly-report
   script: _go_app
 - url: /.*
   script: _go_app

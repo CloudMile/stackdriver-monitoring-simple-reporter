@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"stackdriver-monitoring-exporter/pkg/gcp/stackdriver"
-	"stackdriver-monitoring-exporter/pkg/utils"
+	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
+	"stackdriver-monitoring-simple-reporter/pkg/utils"
 )
 
 type FileExporter struct {
