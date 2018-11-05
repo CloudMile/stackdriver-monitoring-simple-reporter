@@ -2,8 +2,8 @@ runtime: go111
 
 handlers:
 - url: /cron/weekly-report
-  script: _go_app
+  script: auto
 - url: /cron/monthly-report
-  script: _go_app
+  script: auto
 - url: /.*
-  script: _go_app
+  script: auto

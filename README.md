@@ -14,3 +14,18 @@ This is the Alpha version.
 Documents:
 * [GCP Metrics List](https://cloud.google.com/monitoring/api/metrics_gcp)
 * [Agent Metrics List](https://cloud.google.com/monitoring/api/metrics_agent#agent-memory)
+
+
+## Export
+
+Weekly Metrics path format
+
+```shell
+<destination>/
+└── <project_id>
+    └── 2018
+        └── weekly
+            └── 2018-1028-1104
+                ├── 2018-1028-1104[instance_name][cpu_usage_time].csv
+ 								└── 2018-1028-1104[instance_name][memory_bytes_used].csv
+```

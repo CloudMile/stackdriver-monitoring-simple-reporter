@@ -16,7 +16,7 @@ const PointCSVHeader = "timestamp,datetime,value"
 const AggregationAlignmentPeriod = "3600s"
 const AggregationPerSeriesAlignerRate = "ALIGN_RATE"
 const AggregationPerSeriesAlignerMean = "ALIGN_MEAN"
-const MinutesOneDay = 60 * 24
+const MinutesOneDay = 24 * 7
 
 const InstanceNameKey = "instanceName"
 
@@ -37,11 +37,9 @@ func (c *MonitoringClient) SetTimezone(timezone int) {
 func (c *MonitoringClient) SetWeekly() {
 	local := c.Location()
 	now := time.Now().In(local)
+	weekStartDay := now.AddDate(0, 0, -(int)(now.Weekday()))
 
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, local).UTC()
-
-	d := (int)(today.Weekday())
-	c.EndTime = today.AddDate(0, 0, -d)
+	c.EndTime = time.Date(weekStartDay.Year(), weekStartDay.Month(), weekStartDay.Day(), 0, 0, 0, 0, local).UTC()
 	c.StartTime = c.EndTime.AddDate(0, 0, -7)
 
 	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
@@ -119,7 +117,7 @@ func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (met
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
 	for metricIdx := range metricPoints {
-		pointTime = pointTime.Add(time.Second * 60)
+		pointTime = pointTime.Add(time.Hour)
 
 		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
 
@@ -146,7 +144,7 @@ func MakeAgentMemoryFilter(metric, instanceName string) string {
 	return fmt.Sprintf(`metric.type="%s" AND metadata.user_labels.name="%s" AND metric.labels.state="%s"`, metric, instanceName, "used")
 }
 
-func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter, intervalStartTime, intervalEndTime string) (metricPoints []string) {
+func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string) {
 	client := c.getClient()
 
 	svc, err := monitoring.New(client)
@@ -158,8 +156,8 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 
 	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
 	projectsTimeSeriesListCall.Filter(filter)
-	projectsTimeSeriesListCall.IntervalStartTime(intervalStartTime)
-	projectsTimeSeriesListCall.IntervalEndTime(intervalEndTime)
+	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
+	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
 	projectsTimeSeriesListCall.AggregationPerSeriesAligner(aligner)
 	projectsTimeSeriesListCall.AggregationAlignmentPeriod(AggregationAlignmentPeriod)
 

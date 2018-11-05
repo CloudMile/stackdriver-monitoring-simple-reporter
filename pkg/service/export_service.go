@@ -137,9 +137,9 @@ func (es *ExportService) exportInstanceAgentMetrics(ctx context.Context, project
 	}
 }
 
-func (es *ExportService) Export(projectID, metric, aligner, filter, instanceName, intervalStartTime, intervalEndTime string) {
-	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter, intervalStartTime, intervalEndTime)
+func (es *ExportService) ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName string) {
+	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
 
 	metricExporter := es.newMetricExporter()
-	metricExporter.Export(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
+	metricExporter.ExportWeeklyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
 }

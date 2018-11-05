@@ -50,21 +50,18 @@ func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 		r.FormValue("aligner"),
 		r.FormValue("filter"),
 		r.FormValue("instanceName"),
-		r.FormValue("intervalStartTime"),
-		r.FormValue("intervalEndTime"),
 	)
 
 	ctx := appengine.NewContext(r)
 	exportService := service.NewExportService(ctx)
+	exportService.SetWeekly()
 
-	exportService.Export(
+	exportService.ExportWeeklyMetrics(
 		r.FormValue("projectID"),
 		r.FormValue("metric"),
 		r.FormValue("aligner"),
 		r.FormValue("filter"),
 		r.FormValue("instanceName"),
-		r.FormValue("intervalStartTime"),
-		r.FormValue("intervalEndTime"),
 	)
 
 	fmt.Fprint(w, "Done")
