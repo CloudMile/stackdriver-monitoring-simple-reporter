@@ -1,15 +1,14 @@
 package gcp
 
 import (
-
-	"log"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2/google"
+	"log"
 
 	"google.golang.org/api/cloudresourcemanager/v1beta1"
 )
 
-func GetProjects(ctx context.Context) ([]string) {
+func GetProjects(ctx context.Context) []string {
 	client, err := google.DefaultClient(ctx, cloudresourcemanager.CloudPlatformReadOnlyScope)
 	if err != nil {
 		log.Fatal("SetContext: ", err.Error())
