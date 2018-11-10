@@ -6,6 +6,9 @@ cloud.google.com/go/internal
 cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
+# github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+github.com/golang/freetype/truetype
+github.com/golang/freetype/raster
 # github.com/golang/protobuf v1.2.0
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
@@ -15,6 +18,13 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/googleapis/gax-go v2.0.0+incompatible
 github.com/googleapis/gax-go
+# github.com/wcharczuk/go-chart v2.0.1+incompatible
+github.com/wcharczuk/go-chart
+github.com/wcharczuk/go-chart/drawing
+github.com/wcharczuk/go-chart/matrix
+github.com/wcharczuk/go-chart/roboto
+github.com/wcharczuk/go-chart/seq
+github.com/wcharczuk/go-chart/util
 # go.opencensus.io v0.18.0
 go.opencensus.io/trace
 go.opencensus.io/plugin/ochttp
@@ -30,6 +40,11 @@ go.opencensus.io/trace/propagation
 go.opencensus.io
 go.opencensus.io/stats/internal
 go.opencensus.io/internal/tagencoding
+# golang.org/x/image v0.0.0-20181102021609-63626fb251ce
+golang.org/x/image/font
+golang.org/x/image/math/fixed
+golang.org/x/image/draw
+golang.org/x/image/math/f64
 # golang.org/x/net v0.0.0-20180906233101-161cd47e91fd
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
