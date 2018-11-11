@@ -1,7 +1,13 @@
 cron:
+- description: "Weekly metrics stuff job"
+  url: /cron/weekly-report-stuff
+  schedule: every monday 03:10
+  timezone: Asia/Taipei
+
+cron:
 - description: "Weekly metrics report job"
   url: /cron/weekly-report
-  schedule: every monday 03:10
+  schedule: every monday 03:30
   timezone: Asia/Taipei
 
 - description: "Monthly metrics report job"

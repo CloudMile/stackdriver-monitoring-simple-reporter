@@ -10,9 +10,10 @@ import (
 
 func main() {
 	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/cron/weekly-report", weeklyJobHandler)
-	http.HandleFunc("/cron/monthly-report", monthlyJobHandler)
+	http.HandleFunc("/cron/weekly-report-stuff", monthlyJobHandler)
+	http.HandleFunc("/cron/weekly-report", exportWeeklyReportHandler)
 	http.HandleFunc("/export", exportMetricPointsHandler)
+	http.HandleFunc("/cron/monthly-report", monthlyJobHandler)
 
 	appengine.Main()
 }
@@ -42,7 +43,7 @@ func monthlyJobHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Monthly Job Done")
 }
 
-// Export Metric Points to CSV
+// Export Metric Points to CSV and PNG
 func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%v, %v, %v, %v, %v, %v, %v",
 		r.FormValue("projectID"),
@@ -63,6 +64,16 @@ func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 		r.FormValue("filter"),
 		r.FormValue("instanceName"),
 	)
+
+	fmt.Fprint(w, "Done")
+}
+
+func exportWeeklyReportHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	exportService := service.NewExportService(ctx)
+	exportService.SetWeekly()
+
+	exportService.ExportWeeklyReport(ctx)
 
 	fmt.Fprint(w, "Done")
 }

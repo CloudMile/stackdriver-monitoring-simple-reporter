@@ -155,3 +155,14 @@ func (es *ExportService) ExportWeeklyMetricsGraph(projectID, metric, aligner, fi
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues)
 }
+
+func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
+	metricExporter := es.newMetricExporter()
+
+	projectIDs := gcp.GetProjects(ctx)
+
+	for prjIdx := range projectIDs {
+		projectID := projectIDs[prjIdx]
+		metricExporter.ExportWeeklyReport(projectID, es.client.StartTime.In(es.client.Location()))
+	}
+}

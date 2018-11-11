@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/jung-kurt/gofpdf"
+	"google.golang.org/api/iterator"
 
 	"cloud.google.com/go/storage"
 	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
@@ -173,4 +177,120 @@ func generateTicks(xValues []time.Time) chart.Ticks {
 		})
 	}
 	return ticks
+}
+
+type ImageReader struct {
+	Path   string
+	Reader *storage.Reader
+}
+
+func (ir ImageReader) ImageTitle() string {
+	r, _ := regexp.Compile(`\[(\w|-)+\]\[(\w|-)+\]`)
+	return r.FindString(ir.Path)
+}
+
+func (g GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+
+	basePath := basePathOfReportStuff(projectID, "weekly", startDate)
+	log.Printf("basePath: %s", basePath)
+
+	readers := make([]ImageReader, 0)
+
+	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
+	it := bh.Objects(ctx, q)
+	for {
+		objAttrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.Fatalf("Failed to list files: %v", err)
+		}
+
+		if strings.HasSuffix(objAttrs.Name, ".png") {
+			log.Printf("%s", objAttrs.Name)
+
+			png := bh.Object(objAttrs.Name)
+			reader, err := png.NewReader(ctx)
+			if err != nil {
+				log.Fatalf("Failed to generate report: %v", err)
+			}
+			defer reader.Close()
+
+			readers = append(readers, ImageReader{
+				Path:   objAttrs.Name,
+				Reader: reader,
+			})
+		}
+	}
+
+	// Generate report
+	pdf := gofpdf.New("P", "mm", "A4", "")
+
+	// Cover
+	pdf.AddPage()
+	pdf.SetFont("Times", "B", 24)
+	pdf.CellFormat(0, 50, pdfTitle(projectID, "weekly", startDate), "", 1, "C", false, 0, "")
+
+	// Pages
+	pdf.SetFont("Times", "B", 16)
+
+	readersLen := len(readers)
+	for i := 0; i < readersLen; i += 2 {
+		pdf.AddPage()
+
+		cpuReader := readers[i]
+		memReader := readers[i+1]
+
+		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
+		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+
+		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
+		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+
+		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+	}
+
+	// Upload report
+	obj := bh.Object(pdfPath(basePath, projectID, "weekly", startDate))
+	w := obj.NewWriter(ctx)
+
+	pdf.Output(w)
+
+	if err := w.Close(); err != nil {
+		log.Fatalf("Failed to export metrics: %v", err)
+	}
+
+	// Send report
+}
+
+func basePathOfReportStuff(projectID, reportType string, startDate time.Time) string {
+	endDate := startDate.AddDate(0, 0, 7)
+	durationStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
+	folder := fmt.Sprintf("%s/%d/%s/%s", projectID, startDate.Year(), reportType, durationStr)
+
+	return folder
+}
+
+func pdfTitle(projectID, reportType string, startDate time.Time) string {
+	endDate := startDate.AddDate(0, 0, 7)
+	title := fmt.Sprintf("Metrics Weekly Report %s - %s", startDate.Format("2006/01/02"), endDate.Format("2006/01/02"))
+
+	return title
+}
+
+func pdfPath(basePath, projectID, reportType string, startDate time.Time) string {
+	endDate := startDate.AddDate(0, 0, 7)
+	durationStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
+	path := fmt.Sprintf("%s/%s-%s-report-%s.pdf", basePath, durationStr, reportType, projectID)
+
+	return path
 }
