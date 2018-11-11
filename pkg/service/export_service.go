@@ -31,7 +31,7 @@ type ExportService struct {
 	client stackdriver.MonitoringClient
 }
 
-func NewExportService(ctx context.Context) (*ExportService) {
+func NewExportService(ctx context.Context) *ExportService {
 	var es = ExportService{}
 	return es.init(ctx)
 }
@@ -40,7 +40,7 @@ func (es *ExportService) newMetricExporter() metric_exporter.MetricExporter {
 	return metric_exporter.NewGCSExporter(es.conf)
 }
 
-func (es *ExportService) init(ctx context.Context) (*ExportService) {
+func (es *ExportService) init(ctx context.Context) *ExportService {
 	es.conf.LoadConfig()
 
 	es.client = stackdriver.MonitoringClient{}
@@ -89,13 +89,13 @@ func (es *ExportService) exportInstanceCommonMetrics(ctx context.Context, projec
 			t := taskqueue.NewPOSTTask(
 				"/export",
 				map[string][]string{
-					"projectID":    {projectID},
-					"metric":       {metric},
-					"aligner":      {stackdriver.AggregationPerSeriesAlignerRate},
-					"filter":       {filter},
-					"instanceName": {instanceName},
+					"projectID":         {projectID},
+					"metric":            {metric},
+					"aligner":           {stackdriver.AggregationPerSeriesAlignerRate},
+					"filter":            {filter},
+					"instanceName":      {instanceName},
 					"intervalStartTime": {es.client.IntervalStartTime},
-					"intervalEndTime": {es.client.IntervalEndTime},
+					"intervalEndTime":   {es.client.IntervalEndTime},
 				},
 			)
 			if _, err := taskqueue.Add(ctx, t, ""); err != nil {
@@ -121,13 +121,13 @@ func (es *ExportService) exportInstanceAgentMetrics(ctx context.Context, project
 			t := taskqueue.NewPOSTTask(
 				"/export",
 				map[string][]string{
-					"projectID":    {projectID},
-					"metric":       {metric},
-					"aligner":      {stackdriver.AggregationPerSeriesAlignerMean},
-					"filter":       {filter},
-					"instanceName": {instanceName},
+					"projectID":         {projectID},
+					"metric":            {metric},
+					"aligner":           {stackdriver.AggregationPerSeriesAlignerMean},
+					"filter":            {filter},
+					"instanceName":      {instanceName},
 					"intervalStartTime": {es.client.IntervalStartTime},
-					"intervalEndTime": {es.client.IntervalEndTime},
+					"intervalEndTime":   {es.client.IntervalEndTime},
 				},
 			)
 			if _, err := taskqueue.Add(ctx, t, ""); err != nil {
@@ -137,9 +137,21 @@ func (es *ExportService) exportInstanceAgentMetrics(ctx context.Context, project
 	}
 }
 
+func (es *ExportService) ExportWeeklyStuff(projectID, metric, aligner, filter, instanceName string) {
+	es.ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName)
+	es.ExportWeeklyMetricsGraph(projectID, metric, aligner, filter, instanceName)
+}
+
 func (es *ExportService) ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName string) {
 	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
 
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportWeeklyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
+}
+
+func (es *ExportService) ExportWeeklyMetricsGraph(projectID, metric, aligner, filter, instanceName string) {
+	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
+
+	metricExporter := es.newMetricExporter()
+	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues)
 }

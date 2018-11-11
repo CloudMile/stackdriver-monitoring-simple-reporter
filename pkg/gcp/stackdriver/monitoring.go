@@ -16,7 +16,7 @@ const PointCSVHeader = "timestamp,datetime,value"
 const AggregationAlignmentPeriod = "3600s"
 const AggregationPerSeriesAlignerRate = "ALIGN_RATE"
 const AggregationPerSeriesAlignerMean = "ALIGN_MEAN"
-const MinutesOneDay = 24 * 7
+const HoursOfOneWeek = 24 * 7
 
 const InstanceNameKey = "instanceName"
 
@@ -112,7 +112,7 @@ func (c *MonitoringClient) SetContext(ctx context.Context) {
 }
 
 func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
-	metricPoints = make([]string, MinutesOneDay)
+	metricPoints = make([]string, HoursOfOneWeek)
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
@@ -197,6 +197,65 @@ func (c *MonitoringClient) GetInstanceNames(projectID, metric string) (instanceN
 	instanceNames = make([]string, len(listResp.TimeSeries))
 	for i := range listResp.TimeSeries {
 		instanceNames[i] = listResp.TimeSeries[i].Metric.Labels["instance_name"]
+	}
+
+	return
+}
+
+// For draw graph
+func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, filter string) (xValues []time.Time, yValues []float64) {
+	client := c.getClient()
+
+	svc, err := monitoring.New(client)
+	if err != nil {
+		log.Fatal("RetrieveMetricPoints: ", err.Error())
+	}
+
+	project := "projects/" + projectID
+
+	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
+	projectsTimeSeriesListCall.Filter(filter)
+	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
+	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
+	projectsTimeSeriesListCall.AggregationPerSeriesAligner(aligner)
+	projectsTimeSeriesListCall.AggregationAlignmentPeriod(AggregationAlignmentPeriod)
+
+	listResp, err := projectsTimeSeriesListCall.Do()
+	if err != nil {
+		log.Fatal("RetrieveMetricPoints projectsTimeSeriesListCall: ", err.Error())
+	}
+
+	// Only get the first timeseries
+	timeSeries := listResp.TimeSeries[0]
+	xValues, yValues = c.pointsToXY(timeSeries.Points)
+
+	return
+}
+
+func (c *MonitoringClient) pointsToXY(points []*monitoring.Point) (xValues []time.Time, yValues []float64) {
+	xValues = make([]time.Time, HoursOfOneWeek)
+	yValues = make([]float64, HoursOfOneWeek)
+
+	pointTime := c.StartTime
+	var pointIdx = len(points) - 1
+	for metricIdx := 0; metricIdx < HoursOfOneWeek; metricIdx++ {
+		pointTime = pointTime.Add(time.Hour)
+
+		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
+
+		if pointTime.Equal(t) {
+			t = t.Add(time.Hour * (time.Duration)(c.TimeZone))
+
+			xValues[metricIdx] = t
+			yValues[metricIdx] = *(points[pointIdx].Value.DoubleValue)
+
+			pointIdx = pointIdx - 1
+		} else {
+			t = pointTime.Add(time.Hour * (time.Duration)(c.TimeZone))
+
+			xValues[metricIdx] = t
+			yValues[metricIdx] = 0
+		}
 	}
 
 	return

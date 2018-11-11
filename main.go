@@ -56,7 +56,7 @@ func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 	exportService := service.NewExportService(ctx)
 	exportService.SetWeekly()
 
-	exportService.ExportWeeklyMetrics(
+	exportService.ExportWeeklyStuff(
 		r.FormValue("projectID"),
 		r.FormValue("metric"),
 		r.FormValue("aligner"),
