@@ -36,6 +36,12 @@ func NewGCSExporter(c utils.Conf) MetricExporter {
 	return exporter
 }
 
+/************************************************
+
+Weekly Report(CSV)
+
+************************************************/
+
 func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
 	log.Printf("Points len: %d", len(metricPoints))
 
@@ -86,6 +92,12 @@ func MemoryValueFormatter(v interface{}) string {
 	typed, _ := v.(float64)
 	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
 }
+
+/************************************************
+
+Weekly Report(PNG)
+
+************************************************/
 
 func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64) {
 
@@ -183,6 +195,12 @@ func generateTicks(xValues []time.Time) chart.Ticks {
 	}
 	return ticks
 }
+
+/************************************************
+
+Weekly Report(PDF)
+
+************************************************/
 
 type ImageReader struct {
 	Path   string
@@ -306,7 +324,11 @@ func reportName(projectID, reportType string, startDate time.Time) string {
 	return fmt.Sprintf("%s-%s-report-%s.pdf", durationStr, reportType, projectID)
 }
 
-////////////////
+/************************************************
+
+Weekly Report(Mail)
+
+************************************************/
 
 func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string) {
 	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)

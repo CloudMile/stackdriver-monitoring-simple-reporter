@@ -26,6 +26,12 @@ var monitoringAgentMetrics = []string{
 	"agent.googleapis.com/memory/bytes_used",
 }
 
+/************************************************
+
+Initialize and Configuraion
+
+************************************************/
+
 type ExportService struct {
 	conf   utils.Conf
 	client stackdriver.MonitoringClient
@@ -58,6 +64,12 @@ func (es *ExportService) SetMonthly() {
 	es.client.SetMonthly()
 }
 
+/************************************************
+
+Process
+
+************************************************/
+
 func (es *ExportService) Do(ctx context.Context) {
 	projectIDs := gcp.GetProjects(ctx)
 
@@ -73,6 +85,12 @@ func (es *ExportService) Do(ctx context.Context) {
 		es.exportInstanceAgentMetrics(ctx, projectID)
 	}
 }
+
+/************************************************
+
+Export GCP and Agent Metrics
+
+************************************************/
 
 func (es *ExportService) exportInstanceCommonMetrics(ctx context.Context, projectID string) {
 	for mIdx := range monitoringMetrics {
@@ -137,6 +155,12 @@ func (es *ExportService) exportInstanceAgentMetrics(ctx context.Context, project
 	}
 }
 
+/************************************************
+
+Weekly Export Stuff
+
+************************************************/
+
 func (es *ExportService) ExportWeeklyStuff(projectID, metric, aligner, filter, instanceName string) {
 	es.ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName)
 	es.ExportWeeklyMetricsGraph(projectID, metric, aligner, filter, instanceName)
@@ -155,6 +179,12 @@ func (es *ExportService) ExportWeeklyMetricsGraph(projectID, metric, aligner, fi
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues)
 }
+
+/************************************************
+
+Weekly Send Report
+
+************************************************/
 
 func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
 	metricExporter := es.newMetricExporter()

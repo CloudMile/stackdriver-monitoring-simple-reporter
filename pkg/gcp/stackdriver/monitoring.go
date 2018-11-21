@@ -12,20 +12,29 @@ import (
 	"google.golang.org/api/monitoring/v3"
 )
 
-const PointCSVHeader = "timestamp,datetime,value"
-const AggregationAlignmentPeriod = "3600s"
-const AggregationPerSeriesAlignerRate = "ALIGN_RATE"
-const AggregationPerSeriesAlignerMean = "ALIGN_MEAN"
-const HoursOfOneWeek = 24 * 7
+const (
+	PointCSVHeader  = "timestamp,datetime,value"
+	InstanceNameKey = "instanceName"
 
-const InstanceNameKey = "instanceName"
+	AggregationAlignmentPeriod      = "3600s"
+	AggregationPerSeriesAlignerRate = "ALIGN_RATE"
+	AggregationPerSeriesAlignerMean = "ALIGN_MEAN"
 
+	HoursOfOneWeek = 24 * 7
+)
+
+/************************************************
+
+Initialize and Configuraion
+
+************************************************/
 type MonitoringClient struct {
 	TimeZone          int
 	StartTime         time.Time
 	EndTime           time.Time
 	IntervalStartTime string
 	IntervalEndTime   string
+	totalHours        int
 	client            *http.Client
 }
 
@@ -47,6 +56,10 @@ func (c *MonitoringClient) SetWeekly() {
 
 	log.Printf("%s", c.IntervalEndTime)
 	log.Printf("%s", c.IntervalStartTime)
+
+	c.totalHours = HoursOfOneWeek
+
+	log.Printf("totalHours: %i", c.totalHours)
 }
 
 // Previous month
@@ -62,6 +75,10 @@ func (c *MonitoringClient) SetMonthly() {
 
 	log.Printf("%s", c.IntervalEndTime)
 	log.Printf("%s", c.IntervalStartTime)
+
+	c.totalHours = c.EndTime.AddDate(0, 0, -1).Day()
+
+	log.Printf("totalHours: %i", c.totalHours)
 }
 
 func (c *MonitoringClient) Location() *time.Location {
@@ -111,8 +128,64 @@ func (c *MonitoringClient) SetContext(ctx context.Context) {
 	c.client = client
 }
 
+/************************************************
+
+Generate Metric Filter
+
+************************************************/
+
+func MakeInstanceFilter(metric, instanceName string) string {
+	return fmt.Sprintf(`metric.type="%s" AND metric.labels.instance_name="%s"`, metric, instanceName)
+}
+
+// Only query instance used memory from agent
+func MakeAgentMemoryFilter(metric, instanceName string) string {
+	return fmt.Sprintf(`metric.type="%s" AND metadata.user_labels.name="%s" AND metric.labels.state="%s"`, metric, instanceName, "used")
+}
+
+/************************************************
+
+Get GCE Instance Name in Project
+
+************************************************/
+
+func (c *MonitoringClient) GetInstanceNames(projectID, metric string) (instanceNames []string) {
+	client := c.getClient()
+
+	svc, err := monitoring.New(client)
+	if err != nil {
+		log.Fatal("GetInstanceNames: ", err.Error())
+	}
+
+	project := "projects/" + projectID
+
+	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
+	projectsTimeSeriesListCall.View("HEADERS")
+	projectsTimeSeriesListCall.Filter(`metric.type="` + metric + `"`)
+	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
+	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
+
+	listResp, err := projectsTimeSeriesListCall.Do()
+	if err != nil {
+		log.Fatal("GetInstanceNames: ", err.Error())
+	}
+
+	instanceNames = make([]string, len(listResp.TimeSeries))
+	for i := range listResp.TimeSeries {
+		instanceNames[i] = listResp.TimeSeries[i].Metric.Labels["instance_name"]
+	}
+
+	return
+}
+
+/************************************************
+
+Timeseries List
+
+************************************************/
+
 func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
-	metricPoints = make([]string, HoursOfOneWeek)
+	metricPoints = make([]string, c.totalHours)
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
@@ -133,15 +206,6 @@ func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (met
 	}
 
 	return
-}
-
-func MakeInstanceFilter(metric, instanceName string) string {
-	return fmt.Sprintf(`metric.type="%s" AND metric.labels.instance_name="%s"`, metric, instanceName)
-}
-
-// Only query instance used memory from agent
-func MakeAgentMemoryFilter(metric, instanceName string) string {
-	return fmt.Sprintf(`metric.type="%s" AND metadata.user_labels.name="%s" AND metric.labels.state="%s"`, metric, instanceName, "used")
 }
 
 func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string) {
@@ -173,36 +237,11 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 	return
 }
 
-func (c *MonitoringClient) GetInstanceNames(projectID, metric string) (instanceNames []string) {
-	client := c.getClient()
+/************************************************
 
-	svc, err := monitoring.New(client)
-	if err != nil {
-		log.Fatal("GetInstanceNames: ", err.Error())
-	}
+Timeseries Graph point (X, Y)
 
-	project := "projects/" + projectID
-
-	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
-	projectsTimeSeriesListCall.View("HEADERS")
-	projectsTimeSeriesListCall.Filter(`metric.type="` + metric + `"`)
-	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
-	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
-
-	listResp, err := projectsTimeSeriesListCall.Do()
-	if err != nil {
-		log.Fatal("GetInstanceNames: ", err.Error())
-	}
-
-	instanceNames = make([]string, len(listResp.TimeSeries))
-	for i := range listResp.TimeSeries {
-		instanceNames[i] = listResp.TimeSeries[i].Metric.Labels["instance_name"]
-	}
-
-	return
-}
-
-// For draw graph
+************************************************/
 func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, filter string) (xValues []time.Time, yValues []float64) {
 	client := c.getClient()
 
@@ -233,12 +272,12 @@ func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, fi
 }
 
 func (c *MonitoringClient) pointsToXY(points []*monitoring.Point) (xValues []time.Time, yValues []float64) {
-	xValues = make([]time.Time, HoursOfOneWeek)
-	yValues = make([]float64, HoursOfOneWeek)
+	xValues = make([]time.Time, c.totalHours)
+	yValues = make([]float64, c.totalHours)
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
-	for metricIdx := 0; metricIdx < HoursOfOneWeek; metricIdx++ {
+	for metricIdx := 0; metricIdx < c.totalHours; metricIdx++ {
 		pointTime = pointTime.Add(time.Hour)
 
 		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)

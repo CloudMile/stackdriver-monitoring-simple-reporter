@@ -10,10 +10,11 @@ import (
 
 func main() {
 	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/cron/weekly-report-stuff", monthlyJobHandler)
-	http.HandleFunc("/cron/weekly-report", exportWeeklyReportHandler)
+	http.HandleFunc("/cron/weekly-report-stuff", weeklyStuffJobHandler)
+	http.HandleFunc("/cron/weekly-report", weeklyReportJobHandler)
+	http.HandleFunc("/cron/monthly-report-stuff", monthlyStuffJobHandler)
+	http.HandleFunc("/cron/monthly-report", monthlyReportJobHandler)
 	http.HandleFunc("/export", exportMetricPointsHandler)
-	http.HandleFunc("/cron/monthly-report", monthlyJobHandler)
 
 	appengine.Main()
 }
@@ -23,27 +24,12 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "")
 }
 
-func weeklyJobHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+/************************************************
 
-	exportService := service.NewExportService(ctx)
-	exportService.SetWeekly()
-	exportService.Do(ctx)
+Export Metric Points to CSV and PNG
 
-	fmt.Fprint(w, "Weekly Job Done")
-}
+************************************************/
 
-func monthlyJobHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
-
-	exportService := service.NewExportService(ctx)
-	exportService.SetMonthly()
-	exportService.Do(ctx)
-
-	fmt.Fprint(w, "Monthly Job Done")
-}
-
-// Export Metric Points to CSV and PNG
 func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%v, %v, %v, %v, %v, %v, %v",
 		r.FormValue("projectID"),
@@ -68,10 +54,52 @@ func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Done")
 }
 
-func exportWeeklyReportHandler(w http.ResponseWriter, r *http.Request) {
+/************************************************
+
+Weekly
+
+************************************************/
+
+func weeklyStuffJobHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
+	exportService := service.NewExportService(ctx)
+	exportService.SetWeekly()
+	exportService.Do(ctx)
+
+	fmt.Fprint(w, "Weekly Job Done")
+}
+
+func weeklyReportJobHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := appengine.NewContext(r)
 	exportService := service.NewExportService(ctx)
 	exportService.SetWeekly()
+
+	exportService.ExportWeeklyReport(ctx)
+
+	fmt.Fprint(w, "Done")
+}
+
+/************************************************
+
+Monthly
+
+************************************************/
+
+func monthlyStuffJobHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
+	exportService := service.NewExportService(ctx)
+	exportService.SetMonthly()
+	exportService.Do(ctx)
+
+	fmt.Fprint(w, "Monthly Job Done")
+}
+
+func monthlyReportJobHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	exportService := service.NewExportService(ctx)
+	exportService.SetMonthly()
 
 	exportService.ExportWeeklyReport(ctx)
 
