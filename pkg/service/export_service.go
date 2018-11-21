@@ -270,3 +270,21 @@ func (es *ExportService) ExportMonthlyMetricsGraph(projectID, metric, aligner, f
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportMonthlyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
 }
+
+/************************************************
+
+Monthly Send Report
+
+************************************************/
+
+func (es *ExportService) ExportMonthlyReport(ctx context.Context) {
+	metricExporter := es.newMetricExporter()
+
+	projectIDs := gcp.GetProjects(ctx)
+
+	for prjIdx := range projectIDs {
+		projectID := projectIDs[prjIdx]
+		metricExporter.ExportMonthlyReport(projectID, es.client.StartTime.In(es.client.Location()))
+		metricExporter.SendMonthlyReport(ctx, projectID, es.conf.MailReceiver)
+	}
+}

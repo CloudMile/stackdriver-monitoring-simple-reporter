@@ -103,7 +103,7 @@ func monthlyReportJobHandler(w http.ResponseWriter, r *http.Request) {
 	exportService := service.NewExportService(ctx)
 	exportService.SetMonthly()
 
-	exportService.ExportWeeklyReport(ctx)
+	exportService.ExportMonthlyReport(ctx)
 
 	fmt.Fprint(w, "Done")
 }

@@ -13,4 +13,6 @@ type MetricExporter interface {
 
 	ExportMonthlyMetrics(dateTime time.Time, projectID, metric, instanceName string, metricPoints []string)
 	ExportMonthlyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64, totalHour int)
+	ExportMonthlyReport(projectID string, startDate time.Time)
+	SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string)
 }

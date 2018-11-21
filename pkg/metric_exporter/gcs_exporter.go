@@ -312,7 +312,7 @@ func generateMonthlyTicks(xValues []time.Time, totalHour int) chart.Ticks {
 
 /************************************************
 
-Weekly Report(PDF)
+Report Helper(PDF)
 
 ************************************************/
 
@@ -326,6 +326,12 @@ func (ir ImageReader) ImageTitle() string {
 	return r.FindString(ir.Path)
 }
 
+/************************************************
+
+Weekly Report(PDF)
+
+************************************************/
+
 func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
@@ -335,7 +341,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 
 	bh := client.Bucket(g.BucketName)
 
-	basePath := basePathOfReportStuff(projectID, "weekly", startDate)
+	basePath := basePathOfWeeklyReportStuff(projectID, "weekly", startDate)
 	log.Printf("basePath: %s", basePath)
 
 	readers := make([]ImageReader, 0)
@@ -374,7 +380,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	// Cover
 	pdf.AddPage()
 	pdf.SetFont("Times", "B", 24)
-	pdf.CellFormat(0, 50, pdfTitle(projectID, "weekly", startDate), "", 1, "C", false, 0, "")
+	pdf.CellFormat(0, 50, weeklyReportTitle(projectID, "weekly", startDate), "", 1, "C", false, 0, "")
 
 	// Pages
 	pdf.SetFont("Times", "B", 16)
@@ -405,7 +411,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	}
 
 	// Upload report
-	g.ReportName = reportName(projectID, "weekly", startDate)
+	g.ReportName = weeklyReportName(projectID, "weekly", startDate)
 	g.ReportPath = fmt.Sprintf("%s/%s", basePath, g.ReportName)
 	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
@@ -417,7 +423,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	}
 }
 
-func basePathOfReportStuff(projectID, reportType string, startDate time.Time) string {
+func basePathOfWeeklyReportStuff(projectID, reportType string, startDate time.Time) string {
 	endDate := startDate.AddDate(0, 0, 7)
 	durationStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
 	folder := fmt.Sprintf("%s/%d/%s/%s", projectID, startDate.Year(), reportType, durationStr)
@@ -425,17 +431,142 @@ func basePathOfReportStuff(projectID, reportType string, startDate time.Time) st
 	return folder
 }
 
-func pdfTitle(projectID, reportType string, startDate time.Time) string {
+func weeklyReportTitle(projectID, reportType string, startDate time.Time) string {
 	endDate := startDate.AddDate(0, 0, 7)
 	title := fmt.Sprintf("Metrics Weekly Report %s - %s", startDate.Format("2006/01/02"), endDate.Format("2006/01/02"))
 
 	return title
 }
 
-func reportName(projectID, reportType string, startDate time.Time) string {
+func weeklyReportName(projectID, reportType string, startDate time.Time) string {
 	endDate := startDate.AddDate(0, 0, 7)
 	durationStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
 	return fmt.Sprintf("%s-%s-report-%s.pdf", durationStr, reportType, projectID)
+}
+
+/************************************************
+
+Monthly Report(PDF)
+
+************************************************/
+
+func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+
+	basePath := basePathOfMonthlyReportStuff(projectID, "monthly", startDate)
+	log.Printf("basePath: %s", basePath)
+
+	readers := make([]ImageReader, 0)
+
+	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
+	it := bh.Objects(ctx, q)
+	for {
+		objAttrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			log.Fatalf("Failed to list files: %v", err)
+		}
+
+		if strings.HasSuffix(objAttrs.Name, ".png") {
+			log.Printf("%s", objAttrs.Name)
+
+			png := bh.Object(objAttrs.Name)
+			reader, err := png.NewReader(ctx)
+			if err != nil {
+				log.Fatalf("Failed to generate report: %v", err)
+			}
+			defer reader.Close()
+
+			readers = append(readers, ImageReader{
+				Path:   objAttrs.Name,
+				Reader: reader,
+			})
+		}
+	}
+
+	// Generate report
+	pdf := gofpdf.New("P", "mm", "A4", "")
+
+	// Cover
+	pdf.AddPage()
+	pdf.SetFont("Times", "B", 24)
+	pdf.CellFormat(0, 50, monthlyReportTitle(projectID, "monthly", startDate), "", 1, "C", false, 0, "")
+
+	// Pages
+	pdf.SetFont("Times", "B", 16)
+
+	readersLen := len(readers)
+
+	// No output
+	if readersLen == 0 {
+		g.ReportName = ""
+		g.ReportPath = ""
+		return
+	}
+
+	for i := 0; i < readersLen; i += 2 {
+		pdf.AddPage()
+
+		cpuReader := readers[i]
+		memReader := readers[i+1]
+
+		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
+		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+
+		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
+		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+
+		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+	}
+
+	// Upload report
+	g.ReportName = monthlyReportName(projectID, "monthly", startDate)
+	g.ReportPath = fmt.Sprintf("%s/%s", basePath, g.ReportName)
+	obj := bh.Object(g.ReportPath)
+	w := obj.NewWriter(ctx)
+
+	pdf.Output(w)
+
+	if err := w.Close(); err != nil {
+		log.Fatalf("Failed to export metrics: %v", err)
+	}
+}
+
+func basePathOfMonthlyReportStuff(projectID, reportType string, startDate time.Time) string {
+	durationStr := fmt.Sprintf("%d-%02d", startDate.Year(), startDate.Month())
+	folder := fmt.Sprintf("%s/%d/%s/%s", projectID, startDate.Year(), reportType, durationStr)
+
+	return folder
+}
+
+func monthlyReportTitle(projectID, reportType string, startDate time.Time) string {
+	title := fmt.Sprintf("Metrics Monthly Report %s", startDate.Format("2006/01"))
+
+	return title
+}
+
+func monthlyReportName(projectID, reportType string, startDate time.Time) string {
+	durationStr := fmt.Sprintf("%d-%02d", startDate.Year(), startDate.Month())
+	return fmt.Sprintf("%s-%s-report-%s.pdf", durationStr, reportType, projectID)
+}
+
+/************************************************
+
+Report Helper(Mail)
+
+************************************************/
+
+func sender() string {
+	return fmt.Sprintf("GCP Report System<noreply@%s.appspotmail.com>", os.Getenv("GOOGLE_CLOUD_PROJECT"))
 }
 
 /************************************************
@@ -478,7 +609,7 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	msg := &mail.Message{
 		Sender:      sender(),
 		To:          []string{mailReceiver},
-		Subject:     subject(projectID),
+		Subject:     weeklyReportSubject(projectID),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -491,10 +622,63 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	}
 }
 
-func sender() string {
-	return fmt.Sprintf("Weekly report <noreply@%s.appspotmail.com>", os.Getenv("GOOGLE_CLOUD_PROJECT"))
+func weeklyReportSubject(projectID string) string {
+	return fmt.Sprintf("Weekly report: %s", projectID)
 }
 
-func subject(projectID string) string {
-	return fmt.Sprintf("Weekly report: %s", projectID)
+/************************************************
+
+Monthly Report(Mail)
+
+************************************************/
+
+func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string) {
+	log.Printf("SendMonthlyReport ReportName: %s", g.ReportName)
+	log.Printf("SendMonthlyReport ReportPath: %s", g.ReportPath)
+
+	if g.ReportPath == "" {
+		return
+	}
+
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+	obj := bh.Object(g.ReportPath)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		log.Fatalf("Couldn't create reader: %v", err)
+	}
+
+	attachData, err := ioutil.ReadAll(r)
+	if err != nil {
+		log.Fatalf("Couldn't read report: %v", err)
+	}
+
+	attach := mail.Attachment{
+		Name: g.ReportName,
+		Data: attachData,
+	}
+
+	msg := &mail.Message{
+		Sender:      sender(),
+		To:          []string{mailReceiver},
+		Subject:     monthlyReportSubject(projectID),
+		Body:        "You got report.",
+		Attachments: []mail.Attachment{attach},
+	}
+	if err := mail.Send(appCtx, msg); err != nil {
+		log.Printf("Sender: %s", msg.Sender)
+		log.Printf("To: %s", mailReceiver)
+		log.Fatalf("Couldn't send email: %v", err)
+	} else {
+		log.Printf("Report mail sent!")
+	}
+}
+
+func monthlyReportSubject(projectID string) string {
+	return fmt.Sprintf("Monthly report: %s", projectID)
 }
