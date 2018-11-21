@@ -184,30 +184,6 @@ Timeseries List
 
 ************************************************/
 
-func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
-	metricPoints = make([]string, c.TotalHours)
-
-	pointTime := c.StartTime
-	var pointIdx = len(points) - 1
-	for metricIdx := range metricPoints {
-		pointTime = pointTime.Add(time.Hour)
-
-		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
-
-		if pointTime.Equal(t) {
-			t = t.Add(time.Hour * (time.Duration)(c.TimeZone))
-			metricPoints[metricIdx] = fmt.Sprintf("%d,%s,%f", t.Unix(), t.Format("2006-01-02 15:04:05"), *(points[pointIdx].Value.DoubleValue))
-
-			pointIdx = pointIdx - 1
-		} else {
-			t = pointTime.Add(time.Hour * (time.Duration)(c.TimeZone))
-			metricPoints[metricIdx] = fmt.Sprintf("%d,%s,", t.Unix(), t.Format("2006-01-02 15:04:05"))
-		}
-	}
-
-	return
-}
-
 func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string) {
 	client := c.getClient()
 
@@ -231,8 +207,45 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 	}
 
 	// Only get the first timeseries
-	timeSeries := listResp.TimeSeries[0]
-	metricPoints = c.pointsToMetricPoints(timeSeries.Points)
+	if len(listResp.TimeSeries) > 0 {
+		timeSeries := listResp.TimeSeries[0]
+
+		if len(timeSeries.Points) > 0 {
+			metricPoints = c.pointsToMetricPoints(timeSeries.Points)
+			return
+		}
+	}
+
+	metricPoints = c.pointsToMetricPoints([]*monitoring.Point{})
+
+	return
+}
+
+func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
+	metricPoints = make([]string, c.TotalHours)
+
+	pointTime := c.StartTime
+	var pointIdx = len(points) - 1
+	var t time.Time
+	for metricIdx := range metricPoints {
+		pointTime = pointTime.Add(time.Hour)
+
+		if pointIdx >= 0 {
+			t, _ = time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
+
+			if pointTime.Equal(t) {
+				t = t.Add(time.Hour * (time.Duration)(c.TimeZone))
+				metricPoints[metricIdx] = fmt.Sprintf("%d,%s,%f", t.Unix(), t.Format("2006-01-02 15:04:05"), *(points[pointIdx].Value.DoubleValue))
+
+				pointIdx = pointIdx - 1
+
+				continue
+			}
+		}
+
+		t = pointTime.Add(time.Hour * (time.Duration)(c.TimeZone))
+		metricPoints[metricIdx] = fmt.Sprintf("%d,%s,", t.Unix(), t.Format("2006-01-02 15:04:05"))
+	}
 
 	return
 }
@@ -242,6 +255,7 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 Timeseries Graph point (X, Y)
 
 ************************************************/
+
 func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, filter string) (xValues []time.Time, yValues []float64) {
 	client := c.getClient()
 
@@ -265,8 +279,16 @@ func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, fi
 	}
 
 	// Only get the first timeseries
-	timeSeries := listResp.TimeSeries[0]
-	xValues, yValues = c.pointsToXY(timeSeries.Points)
+	if len(listResp.TimeSeries) > 0 {
+		timeSeries := listResp.TimeSeries[0]
+
+		if len(timeSeries.Points) > 0 {
+			xValues, yValues = c.pointsToXY(timeSeries.Points)
+			return
+		}
+	}
+
+	xValues, yValues = c.pointsToXY([]*monitoring.Point{})
 
 	return
 }
@@ -277,24 +299,29 @@ func (c *MonitoringClient) pointsToXY(points []*monitoring.Point) (xValues []tim
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
+	var t time.Time
 	for metricIdx := 0; metricIdx < c.TotalHours; metricIdx++ {
 		pointTime = pointTime.Add(time.Hour)
 
-		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
+		if pointIdx >= 0 {
+			t, _ = time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
 
-		if pointTime.Equal(t) {
-			t = t.Add(time.Hour * (time.Duration)(c.TimeZone))
+			if pointTime.Equal(t) {
+				t = t.Add(time.Hour * (time.Duration)(c.TimeZone))
 
-			xValues[metricIdx] = t
-			yValues[metricIdx] = *(points[pointIdx].Value.DoubleValue)
+				xValues[metricIdx] = t
+				yValues[metricIdx] = *(points[pointIdx].Value.DoubleValue)
 
-			pointIdx = pointIdx - 1
-		} else {
-			t = pointTime.Add(time.Hour * (time.Duration)(c.TimeZone))
+				pointIdx = pointIdx - 1
 
-			xValues[metricIdx] = t
-			yValues[metricIdx] = 0
+				continue
+			}
 		}
+
+		t = pointTime.Add(time.Hour * (time.Duration)(c.TimeZone))
+
+		xValues[metricIdx] = t
+		yValues[metricIdx] = 0
 	}
 
 	return

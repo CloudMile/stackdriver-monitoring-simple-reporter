@@ -20,6 +20,7 @@ import (
 	"stackdriver-monitoring-simple-reporter/pkg/utils"
 
 	"github.com/wcharczuk/go-chart"
+	"github.com/wcharczuk/go-chart/drawing"
 	"github.com/wcharczuk/go-chart/util"
 )
 
@@ -197,6 +198,11 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 			chart.TimeSeries{
 				XValues: xValues,
 				YValues: yValues,
+				Style: chart.Style{
+					Show:        true,
+					StrokeColor: drawing.ColorBlue,
+					FillColor:   drawing.ColorBlue.WithAlpha(64),
+				},
 			},
 		},
 	}
@@ -279,6 +285,11 @@ func (g *GCSExporter) ExportMonthlyMetricsChart(startDate time.Time, projectID, 
 			chart.TimeSeries{
 				XValues: xValues,
 				YValues: yValues,
+				Style: chart.Style{
+					Show:        true,
+					StrokeColor: drawing.ColorBlue,
+					FillColor:   drawing.ColorBlue.WithAlpha(64),
+				},
 			},
 		},
 	}

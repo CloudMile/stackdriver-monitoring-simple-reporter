@@ -31,12 +31,13 @@ Export Metric Points to CSV and PNG
 ************************************************/
 
 func exportMetricPointsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%v, %v, %v, %v, %v, %v, %v",
+	log.Printf("%v, %v, %v, %v, %v, %v",
 		r.FormValue("projectID"),
 		r.FormValue("metric"),
 		r.FormValue("aligner"),
 		r.FormValue("filter"),
 		r.FormValue("instanceName"),
+		r.FormValue("dataRange"),
 	)
 
 	ctx := appengine.NewContext(r)
