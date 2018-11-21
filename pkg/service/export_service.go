@@ -11,6 +11,11 @@ import (
 	"stackdriver-monitoring-simple-reporter/pkg/utils"
 )
 
+const (
+	DataRangeWeekly  = "weekly"
+	DataRangeMonthly = "monthly"
+)
+
 var monitoringMetrics = []string{
 	"compute.googleapis.com/instance/cpu/usage_time",
 }
@@ -33,8 +38,9 @@ Initialize and Configuraion
 ************************************************/
 
 type ExportService struct {
-	conf   utils.Conf
-	client stackdriver.MonitoringClient
+	conf      utils.Conf
+	client    stackdriver.MonitoringClient
+	DataRange string
 }
 
 func NewExportService(ctx context.Context) *ExportService {
@@ -58,10 +64,23 @@ func (es *ExportService) init(ctx context.Context) *ExportService {
 
 func (es *ExportService) SetWeekly() {
 	es.client.SetWeekly()
+	es.DataRange = DataRangeWeekly
 }
 
 func (es *ExportService) SetMonthly() {
 	es.client.SetMonthly()
+	es.DataRange = DataRangeMonthly
+}
+
+func (es *ExportService) SetDataRange(dataRange string) {
+	switch dataRange {
+	case DataRangeMonthly:
+		es.client.SetMonthly()
+		es.DataRange = DataRangeMonthly
+	default:
+		es.client.SetWeekly()
+		es.DataRange = DataRangeWeekly
+	}
 }
 
 /************************************************
@@ -78,8 +97,8 @@ func (es *ExportService) Do(ctx context.Context) {
 
 		log.Printf("Query metrics in project ID: %s", projectID)
 
-		// Common instance metrics
-		es.exportInstanceCommonMetrics(ctx, projectID)
+		// GCP metrics
+		es.exportInstanceGCPMetrics(ctx, projectID)
 
 		// Agent metrics
 		es.exportInstanceAgentMetrics(ctx, projectID)
@@ -92,7 +111,7 @@ Export GCP and Agent Metrics
 
 ************************************************/
 
-func (es *ExportService) exportInstanceCommonMetrics(ctx context.Context, projectID string) {
+func (es *ExportService) exportInstanceGCPMetrics(ctx context.Context, projectID string) {
 	for mIdx := range monitoringMetrics {
 		metric := monitoringMetrics[mIdx]
 
@@ -114,6 +133,7 @@ func (es *ExportService) exportInstanceCommonMetrics(ctx context.Context, projec
 					"instanceName":      {instanceName},
 					"intervalStartTime": {es.client.IntervalStartTime},
 					"intervalEndTime":   {es.client.IntervalEndTime},
+					"dataRange":         {es.DataRange},
 				},
 			)
 			if _, err := taskqueue.Add(ctx, t, ""); err != nil {
@@ -146,12 +166,40 @@ func (es *ExportService) exportInstanceAgentMetrics(ctx context.Context, project
 					"instanceName":      {instanceName},
 					"intervalStartTime": {es.client.IntervalStartTime},
 					"intervalEndTime":   {es.client.IntervalEndTime},
+					"dataRange":         {es.DataRange},
 				},
 			)
 			if _, err := taskqueue.Add(ctx, t, ""); err != nil {
 				log.Fatal(err.Error())
 			}
 		}
+	}
+}
+
+/************************************************
+
+Export Stuff
+
+************************************************/
+
+func (es *ExportService) ExportStuff(projectID, metric, aligner, filter, instanceName string) {
+	switch es.DataRange {
+	case DataRangeMonthly:
+		es.ExportMonthlyStuff(
+			projectID,
+			metric,
+			aligner,
+			filter,
+			instanceName,
+		)
+	default:
+		es.ExportWeeklyStuff(
+			projectID,
+			metric,
+			aligner,
+			filter,
+			instanceName,
+		)
 	}
 }
 
@@ -177,7 +225,7 @@ func (es *ExportService) ExportWeeklyMetricsGraph(projectID, metric, aligner, fi
 	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
 
 	metricExporter := es.newMetricExporter()
-	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues)
+	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
 }
 
 /************************************************
@@ -196,4 +244,29 @@ func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
 		metricExporter.ExportWeeklyReport(projectID, es.client.StartTime.In(es.client.Location()))
 		metricExporter.SendWeeklyReport(ctx, projectID, es.conf.MailReceiver)
 	}
+}
+
+/************************************************
+
+Monthly Export Stuff
+
+************************************************/
+
+func (es *ExportService) ExportMonthlyStuff(projectID, metric, aligner, filter, instanceName string) {
+	es.ExportMonthlyMetrics(projectID, metric, aligner, filter, instanceName)
+	es.ExportMonthlyMetricsGraph(projectID, metric, aligner, filter, instanceName)
+}
+
+func (es *ExportService) ExportMonthlyMetrics(projectID, metric, aligner, filter, instanceName string) {
+	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
+
+	metricExporter := es.newMetricExporter()
+	metricExporter.ExportMonthlyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
+}
+
+func (es *ExportService) ExportMonthlyMetricsGraph(projectID, metric, aligner, filter, instanceName string) {
+	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
+
+	metricExporter := es.newMetricExporter()
+	metricExporter.ExportMonthlyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
 }

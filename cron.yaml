@@ -9,7 +9,12 @@ cron:
   schedule: every monday 03:30
   timezone: Asia/Taipei
 
+- description: "Monthly metrics stuff job"
+  url: /cron/monthly-report-stuff
+  schedule: 1 of month 03:10
+  timezone: Asia/Taipei
+
 - description: "Monthly metrics report job"
   url: /cron/monthly-report
-  schedule: 1 of month 03:10
+  schedule: 1 of month 03:30
   timezone: Asia/Taipei

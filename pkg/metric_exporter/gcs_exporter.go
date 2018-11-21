@@ -36,12 +36,6 @@ func NewGCSExporter(c utils.Conf) MetricExporter {
 	return exporter
 }
 
-/************************************************
-
-Weekly Report(CSV)
-
-************************************************/
-
 func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
 	log.Printf("Points len: %d", len(metricPoints))
 
@@ -64,6 +58,17 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
 }
+
+func MemoryValueFormatter(v interface{}) string {
+	typed, _ := v.(float64)
+	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
+}
+
+/************************************************
+
+Weekly Report(CSV)
+
+************************************************/
 
 //
 // <destination>/
@@ -88,9 +93,58 @@ func (g *GCSExporter) ExportWeeklyMetrics(startDate time.Time, projectID, metric
 	g.saveTimeSeriesToCSV(output, metricPoints)
 }
 
-func MemoryValueFormatter(v interface{}) string {
-	typed, _ := v.(float64)
-	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
+/************************************************
+
+Monthly Report(CSV)
+
+************************************************/
+
+//
+// <destination>/
+// └── <project_id>
+//     └── 2018
+//         └── monthly
+//             └── 2018-10
+//                 ├── 2018-10[instance_name][cpu_usage_time].csv
+//  							 └── 2018-10[instance_name][memory_bytes_used].csv
+//
+func (g *GCSExporter) ExportMonthlyMetrics(startDate time.Time, projectID, metric, instanceName string, metricPoints []string) {
+	monthStr := fmt.Sprintf("%d-%02d", startDate.Year(), startDate.Month())
+	folder := fmt.Sprintf("%s/%d/monthly/%s", projectID, startDate.Year(), monthStr)
+
+	title := strings.Replace(metric, "compute.googleapis.com/instance/", "", -1)
+	title = strings.Replace(title, "agent.googleapis.com/", "", -1)
+	title = strings.Replace(title, "/", "_", -1)
+
+	output := fmt.Sprintf("%s/%s[%s][%s].csv", folder, monthStr, instanceName, title)
+
+	g.saveTimeSeriesToCSV(output, metricPoints)
+}
+
+/************************************************
+
+Report Helper(PNG)
+
+************************************************/
+
+func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+	obj := bh.Object(filename)
+	w := obj.NewWriter(ctx)
+
+	graph.Render(chart.PNG, w)
+
+	log.Printf("%v", graph.Series[0].GetStyle().Show)
+
+	if err := w.Close(); err != nil {
+		log.Fatalf("Failed to export metrics: %v", err)
+	}
 }
 
 /************************************************
@@ -99,7 +153,7 @@ Weekly Report(PNG)
 
 ************************************************/
 
-func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64) {
+func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64, totalHour int) {
 
 	graph := chart.Chart{
 		Background: chart.Style{
@@ -125,7 +179,7 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 				StrokeColor: chart.ColorAlternateGray,
 				StrokeWidth: 1.0,
 			},
-			Ticks: generateTicks(xValues),
+			Ticks: generateWeeklyTicks(xValues, totalHour),
 		},
 		YAxis: chart.YAxis{
 			Name:      "Value",
@@ -160,37 +214,97 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 	g.saveTimeSeriesToPNG(output, graph)
 }
 
-func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-
-	bh := client.Bucket(g.BucketName)
-	obj := bh.Object(filename)
-	w := obj.NewWriter(ctx)
-
-	graph.Render(chart.PNG, w)
-
-	log.Printf("%v", graph.Series[0].GetStyle().Show)
-
-	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
-	}
-}
-
-func generateTicks(xValues []time.Time) chart.Ticks {
+func generateWeeklyTicks(xValues []time.Time, totalHour int) chart.Ticks {
 	ticks := make([]chart.Tick, 0)
-	day7 := 24 * 7
 	ticks = append(ticks, chart.Tick{
 		Value: float64(xValues[0].UnixNano()),
 		Label: xValues[0].Format(chart.DefaultDateFormat),
 	})
-	for i := 23; i < day7; i += 24 {
+	for i := 23; i < totalHour; i += 24 {
 		ticks = append(ticks, chart.Tick{
 			Value: util.Time.ToFloat64((xValues[i])),
 			Label: xValues[i].Format(chart.DefaultDateFormat),
+		})
+	}
+	return ticks
+}
+
+/************************************************
+
+Month Report(PNG)
+
+************************************************/
+
+func (g *GCSExporter) ExportMonthlyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64, totalHour int) {
+
+	graph := chart.Chart{
+		Background: chart.Style{
+			Padding: chart.Box{
+				Top:    10,
+				Left:   10,
+				Right:  50,
+				Bottom: 10,
+			},
+		},
+		Width: 1096,
+		XAxis: chart.XAxis{
+			Name:      "DateTime (1 hour interval)",
+			NameStyle: chart.StyleShow(),
+			Style:     chart.StyleShow(),
+			GridMajorStyle: chart.Style{
+				Show:        true,
+				StrokeColor: chart.ColorAlternateGray,
+				StrokeWidth: 1.0,
+			},
+			GridMinorStyle: chart.Style{
+				Show:        true,
+				StrokeColor: chart.ColorAlternateGray,
+				StrokeWidth: 1.0,
+			},
+			Ticks: generateMonthlyTicks(xValues, totalHour),
+		},
+		YAxis: chart.YAxis{
+			Name:      "Value",
+			NameStyle: chart.StyleShow(),
+			Style:     chart.StyleShow(),
+			// ValueFormatter: MemoryValueFormatter,
+			GridMajorStyle: chart.Style{
+				Show:            true,
+				StrokeColor:     chart.ColorAlternateGray,
+				StrokeDashArray: []float64{5.0, 5.0},
+				StrokeWidth:     1.0,
+			},
+		},
+		Series: []chart.Series{
+			chart.TimeSeries{
+				XValues: xValues,
+				YValues: yValues,
+			},
+		},
+	}
+
+	monthStr := fmt.Sprintf("%d-%02d", startDate.Year(), startDate.Month())
+	folder := fmt.Sprintf("%s/%d/monthly/%s", projectID, startDate.Year(), monthStr)
+
+	title := strings.Replace(metric, "compute.googleapis.com/instance/", "", -1)
+	title = strings.Replace(title, "agent.googleapis.com/", "", -1)
+	title = strings.Replace(title, "/", "_", -1)
+
+	output := fmt.Sprintf("%s/%s[%s][%s].png", folder, monthStr, instanceName, title)
+
+	g.saveTimeSeriesToPNG(output, graph)
+}
+
+func generateMonthlyTicks(xValues []time.Time, totalHour int) chart.Ticks {
+	ticks := make([]chart.Tick, 0)
+	ticks = append(ticks, chart.Tick{
+		Value: float64(xValues[0].UnixNano()),
+		Label: xValues[0].Format("02"),
+	})
+	for i := 23; i < totalHour; i += 24 {
+		ticks = append(ticks, chart.Tick{
+			Value: util.Time.ToFloat64((xValues[i])),
+			Label: xValues[i].Format("02"),
 		})
 	}
 	return ticks

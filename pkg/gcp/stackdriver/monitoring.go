@@ -34,7 +34,7 @@ type MonitoringClient struct {
 	EndTime           time.Time
 	IntervalStartTime string
 	IntervalEndTime   string
-	totalHours        int
+	TotalHours        int
 	client            *http.Client
 }
 
@@ -57,9 +57,9 @@ func (c *MonitoringClient) SetWeekly() {
 	log.Printf("%s", c.IntervalEndTime)
 	log.Printf("%s", c.IntervalStartTime)
 
-	c.totalHours = HoursOfOneWeek
+	c.TotalHours = HoursOfOneWeek
 
-	log.Printf("totalHours: %i", c.totalHours)
+	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 // Previous month
@@ -68,7 +68,7 @@ func (c *MonitoringClient) SetMonthly() {
 	now := time.Now().In(local)
 
 	c.EndTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, local).UTC()
-	c.StartTime = c.EndTime.AddDate(0, -1, 0)
+	c.StartTime = c.EndTime.AddDate(0, -1, -1)
 
 	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
 	c.IntervalStartTime = c.StartTime.Format("2006-01-02T15:04:05.000000000Z")
@@ -76,9 +76,9 @@ func (c *MonitoringClient) SetMonthly() {
 	log.Printf("%s", c.IntervalEndTime)
 	log.Printf("%s", c.IntervalStartTime)
 
-	c.totalHours = c.EndTime.AddDate(0, 0, -1).Day()
+	c.TotalHours = c.EndTime.AddDate(0, 0, -1).Day() * 24
 
-	log.Printf("totalHours: %i", c.totalHours)
+	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 func (c *MonitoringClient) Location() *time.Location {
@@ -185,7 +185,7 @@ Timeseries List
 ************************************************/
 
 func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
-	metricPoints = make([]string, c.totalHours)
+	metricPoints = make([]string, c.TotalHours)
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
@@ -272,12 +272,12 @@ func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, fi
 }
 
 func (c *MonitoringClient) pointsToXY(points []*monitoring.Point) (xValues []time.Time, yValues []float64) {
-	xValues = make([]time.Time, c.totalHours)
-	yValues = make([]float64, c.totalHours)
+	xValues = make([]time.Time, c.TotalHours)
+	yValues = make([]float64, c.TotalHours)
 
 	pointTime := c.StartTime
 	var pointIdx = len(points) - 1
-	for metricIdx := 0; metricIdx < c.totalHours; metricIdx++ {
+	for metricIdx := 0; metricIdx < c.TotalHours; metricIdx++ {
 		pointTime = pointTime.Add(time.Hour)
 
 		t, _ := time.Parse("2006-01-02T15:04:05Z", points[pointIdx].Interval.StartTime)
