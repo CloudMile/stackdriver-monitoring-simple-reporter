@@ -164,5 +164,6 @@ func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
 	for prjIdx := range projectIDs {
 		projectID := projectIDs[prjIdx]
 		metricExporter.ExportWeeklyReport(projectID, es.client.StartTime.In(es.client.Location()))
+		metricExporter.SendWeeklyReport(ctx, projectID, es.conf.MailReceiver)
 	}
 }

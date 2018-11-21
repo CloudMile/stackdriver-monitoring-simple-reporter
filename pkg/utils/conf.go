@@ -8,8 +8,9 @@ import (
 )
 
 type Conf struct {
-	Timezone    int    `yaml:"timezone"`
-	Destination string `yaml:"destination"`
+	Timezone     int    `yaml:"timezone"`
+	Destination  string `yaml:"destination"`
+	MailReceiver string `yaml:"mailReceiver"`
 }
 
 func (c *Conf) LoadConfig() *Conf {

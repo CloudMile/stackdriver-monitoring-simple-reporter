@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jung-kurt/gofpdf"
 	"google.golang.org/api/iterator"
+	"google.golang.org/appengine/mail"
 
 	"cloud.google.com/go/storage"
 	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
@@ -22,16 +25,18 @@ import (
 
 type GCSExporter struct {
 	BucketName string
+	ReportName string
+	ReportPath string
 }
 
 func NewGCSExporter(c utils.Conf) MetricExporter {
-	exporter := GCSExporter{}
+	exporter := &GCSExporter{}
 	exporter.BucketName = c.Destination
 
 	return exporter
 }
 
-func (g GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
+func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
 	log.Printf("Points len: %d", len(metricPoints))
 
 	content := fmt.Sprintf("%s\n%s", stackdriver.PointCSVHeader, strings.Join(metricPoints, "\n"))
@@ -63,7 +68,7 @@ func (g GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string)
 //                 ├── 2018-1028-1104[instance_name][cpu_usage_time].csv
 //  							 └── 2018-1028-1104[instance_name][memory_bytes_used].csv
 //
-func (g GCSExporter) ExportWeeklyMetrics(startDate time.Time, projectID, metric, instanceName string, metricPoints []string) {
+func (g *GCSExporter) ExportWeeklyMetrics(startDate time.Time, projectID, metric, instanceName string, metricPoints []string) {
 	endDate := startDate.AddDate(0, 0, 7)
 	weekStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
 	folder := fmt.Sprintf("%s/%d/weekly/%s", projectID, startDate.Year(), weekStr)
@@ -82,7 +87,7 @@ func MemoryValueFormatter(v interface{}) string {
 	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
 }
 
-func (g GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64) {
+func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64) {
 
 	graph := chart.Chart{
 		Background: chart.Style{
@@ -143,7 +148,7 @@ func (g GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, me
 	g.saveTimeSeriesToPNG(output, graph)
 }
 
-func (g GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
+func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -189,7 +194,7 @@ func (ir ImageReader) ImageTitle() string {
 	return r.FindString(ir.Path)
 }
 
-func (g GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
+func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -243,6 +248,14 @@ func (g GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
 	pdf.SetFont("Times", "B", 16)
 
 	readersLen := len(readers)
+
+	// No output
+	if readersLen == 0 {
+		g.ReportName = ""
+		g.ReportPath = ""
+		return
+	}
+
 	for i := 0; i < readersLen; i += 2 {
 		pdf.AddPage()
 
@@ -260,7 +273,9 @@ func (g GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
 	}
 
 	// Upload report
-	obj := bh.Object(pdfPath(basePath, projectID, "weekly", startDate))
+	g.ReportName = reportName(projectID, "weekly", startDate)
+	g.ReportPath = fmt.Sprintf("%s/%s", basePath, g.ReportName)
+	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
 
 	pdf.Output(w)
@@ -268,8 +283,6 @@ func (g GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
 	if err := w.Close(); err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
-
-	// Send report
 }
 
 func basePathOfReportStuff(projectID, reportType string, startDate time.Time) string {
@@ -287,10 +300,65 @@ func pdfTitle(projectID, reportType string, startDate time.Time) string {
 	return title
 }
 
-func pdfPath(basePath, projectID, reportType string, startDate time.Time) string {
+func reportName(projectID, reportType string, startDate time.Time) string {
 	endDate := startDate.AddDate(0, 0, 7)
 	durationStr := fmt.Sprintf("%d-%02d%02d-%02d%02d", startDate.Year(), startDate.Month(), startDate.Day(), endDate.Month(), endDate.Day())
-	path := fmt.Sprintf("%s/%s-%s-report-%s.pdf", basePath, durationStr, reportType, projectID)
+	return fmt.Sprintf("%s-%s-report-%s.pdf", durationStr, reportType, projectID)
+}
 
-	return path
+////////////////
+
+func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string) {
+	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)
+	log.Printf("SendWeeklyReport ReportPath: %s", g.ReportPath)
+
+	if g.ReportPath == "" {
+		return
+	}
+
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+	obj := bh.Object(g.ReportPath)
+	r, err := obj.NewReader(ctx)
+	if err != nil {
+		log.Fatalf("Couldn't create reader: %v", err)
+	}
+
+	attachData, err := ioutil.ReadAll(r)
+	if err != nil {
+		log.Fatalf("Couldn't read report: %v", err)
+	}
+
+	attach := mail.Attachment{
+		Name: g.ReportName,
+		Data: attachData,
+	}
+
+	msg := &mail.Message{
+		Sender:      sender(),
+		To:          []string{mailReceiver},
+		Subject:     subject(projectID),
+		Body:        "You got report.",
+		Attachments: []mail.Attachment{attach},
+	}
+	if err := mail.Send(appCtx, msg); err != nil {
+		log.Printf("Sender: %s", msg.Sender)
+		log.Printf("To: %s", mailReceiver)
+		log.Fatalf("Couldn't send email: %v", err)
+	} else {
+		log.Printf("Report mail sent!")
+	}
+}
+
+func sender() string {
+	return fmt.Sprintf("Weekly report <noreply@%s.appspotmail.com>", os.Getenv("GOOGLE_CLOUD_PROJECT"))
+}
+
+func subject(projectID string) string {
+	return fmt.Sprintf("Weekly report: %s", projectID)
 }

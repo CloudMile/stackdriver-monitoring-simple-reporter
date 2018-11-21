@@ -4,7 +4,6 @@ cron:
   schedule: every monday 03:10
   timezone: Asia/Taipei
 
-cron:
 - description: "Weekly metrics report job"
   url: /cron/weekly-report
   schedule: every monday 03:30
