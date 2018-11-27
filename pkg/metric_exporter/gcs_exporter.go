@@ -62,7 +62,27 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 
 func MemoryValueFormatter(v interface{}) string {
 	typed, _ := v.(float64)
-	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
+	unit := "B "
+
+	// KB
+	if (typed > 1000) {
+		typed = typed/1024
+		unit = "KB"
+	}
+
+	// MB
+	if (typed > 1000) {
+		typed = typed/1024
+		unit = "MB"
+	}
+
+	// GB
+	if (typed > 1000) {
+		typed = typed/1024
+		unit = "GB"
+	}
+
+	return fmt.Sprintf("%6.2f%s", typed, unit)
 }
 
 /************************************************
@@ -186,7 +206,7 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
 			Style:     chart.StyleShow(),
-			// ValueFormatter: MemoryValueFormatter,
+			ValueFormatter: MemoryValueFormatter,
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
@@ -273,7 +293,7 @@ func (g *GCSExporter) ExportMonthlyMetricsChart(startDate time.Time, projectID, 
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
 			Style:     chart.StyleShow(),
-			// ValueFormatter: MemoryValueFormatter,
+			ValueFormatter: MemoryValueFormatter,
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
