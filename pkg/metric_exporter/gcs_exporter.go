@@ -617,9 +617,12 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 		Data: attachData,
 	}
 
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
 	msg := &mail.Message{
 		Sender:      sender(),
-		To:          []string{mailReceiver},
+		To:          mailReceivers,
 		Subject:     weeklyReportSubject(projectID),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
@@ -674,9 +677,12 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		Data: attachData,
 	}
 
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
 	msg := &mail.Message{
 		Sender:      sender(),
-		To:          []string{mailReceiver},
+		To:          mailReceivers,
 		Subject:     monthlyReportSubject(projectID),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
