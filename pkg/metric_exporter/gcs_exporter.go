@@ -60,29 +60,48 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 	}
 }
 
+func getValueFormat(metric string) chart.ValueFormatter {
+	if "compute.googleapis.com/instance/cpu/usage_time" == metric {
+		return CPUValueFormatter
+	}
+	return MemoryValueFormatter
+}
+
+func CPUValueFormatter(v interface{}) string {
+	typed, _ := v.(float64)
+	unit := "ms/s"
+
+	if typed > 1000 {
+		typed = typed / 1000
+		unit = " s/s"
+	}
+
+	return fmt.Sprintf("+%6.2f%s", typed, unit)
+}
+
 func MemoryValueFormatter(v interface{}) string {
 	typed, _ := v.(float64)
-	unit := "B "
+	unit := " B"
 
 	// KB
-	if (typed > 1000) {
-		typed = typed/1024
+	if typed > 1000 {
+		typed = typed / 1024
 		unit = "KB"
 	}
 
 	// MB
-	if (typed > 1000) {
-		typed = typed/1024
+	if typed > 1000 {
+		typed = typed / 1024
 		unit = "MB"
 	}
 
 	// GB
-	if (typed > 1000) {
-		typed = typed/1024
+	if typed > 1000 {
+		typed = typed / 1024
 		unit = "GB"
 	}
 
-	return fmt.Sprintf("%6.2f%s", typed, unit)
+	return fmt.Sprintf("+%8.2f%s", typed, unit)
 }
 
 /************************************************
@@ -205,8 +224,13 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 		YAxis: chart.YAxis{
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
-			Style:     chart.StyleShow(),
-			ValueFormatter: MemoryValueFormatter,
+			Style: chart.Style{
+				Show:                true,
+				FontSize:            8.0,
+				Font:                utils.GetFont(),
+				TextHorizontalAlign: chart.TextHorizontalAlignRight,
+			},
+			ValueFormatter: getValueFormat(metric),
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
@@ -292,8 +316,13 @@ func (g *GCSExporter) ExportMonthlyMetricsChart(startDate time.Time, projectID, 
 		YAxis: chart.YAxis{
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
-			Style:     chart.StyleShow(),
-			ValueFormatter: MemoryValueFormatter,
+			Style: chart.Style{
+				Show:                true,
+				FontSize:            8.0,
+				Font:                utils.GetFont(),
+				TextHorizontalAlign: chart.TextHorizontalAlignRight,
+			},
+			ValueFormatter: getValueFormat(metric),
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
