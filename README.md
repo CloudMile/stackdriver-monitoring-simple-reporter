@@ -4,7 +4,7 @@ A GAE service to send GCE Instance CPU/Memory Usage report weekly/monthly.
 
 Using go version 1.11 or above.
 
-This is the Alpha version.
+This is the Beta version.
 
 ## Installation
 
