@@ -1,0 +1,11 @@
+runtime: go111
+
+instance_class: F2
+
+handlers:
+- url: /cron/weekly-report
+  script: auto
+- url: /cron/monthly-report
+  script: auto
+- url: /.*
+  script: auto
