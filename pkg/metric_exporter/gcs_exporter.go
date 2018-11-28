@@ -60,9 +60,48 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 	}
 }
 
+func getValueFormat(metric string) chart.ValueFormatter {
+	if "compute.googleapis.com/instance/cpu/usage_time" == metric {
+		return CPUValueFormatter
+	}
+	return MemoryValueFormatter
+}
+
+func CPUValueFormatter(v interface{}) string {
+	typed, _ := v.(float64)
+	unit := "ms/s"
+
+	if typed > 1000 {
+		typed = typed / 1000
+		unit = " s/s"
+	}
+
+	return fmt.Sprintf("+%6.2f%s", typed, unit)
+}
+
 func MemoryValueFormatter(v interface{}) string {
 	typed, _ := v.(float64)
-	return fmt.Sprintf(chart.DefaultFloatFormat, typed/1024/1024)
+	unit := " B"
+
+	// KB
+	if typed > 1000 {
+		typed = typed / 1024
+		unit = "KB"
+	}
+
+	// MB
+	if typed > 1000 {
+		typed = typed / 1024
+		unit = "MB"
+	}
+
+	// GB
+	if typed > 1000 {
+		typed = typed / 1024
+		unit = "GB"
+	}
+
+	return fmt.Sprintf("+%8.2f%s", typed, unit)
 }
 
 /************************************************
@@ -141,8 +180,6 @@ func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 
 	graph.Render(chart.PNG, w)
 
-	log.Printf("%v", graph.Series[0].GetStyle().Show)
-
 	if err := w.Close(); err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
@@ -185,8 +222,13 @@ func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, m
 		YAxis: chart.YAxis{
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
-			Style:     chart.StyleShow(),
-			// ValueFormatter: MemoryValueFormatter,
+			Style: chart.Style{
+				Show:                true,
+				FontSize:            8.0,
+				Font:                utils.GetFont(),
+				TextHorizontalAlign: chart.TextHorizontalAlignRight,
+			},
+			ValueFormatter: getValueFormat(metric),
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
@@ -272,8 +314,13 @@ func (g *GCSExporter) ExportMonthlyMetricsChart(startDate time.Time, projectID, 
 		YAxis: chart.YAxis{
 			Name:      "Value",
 			NameStyle: chart.StyleShow(),
-			Style:     chart.StyleShow(),
-			// ValueFormatter: MemoryValueFormatter,
+			Style: chart.Style{
+				Show:                true,
+				FontSize:            8.0,
+				Font:                utils.GetFont(),
+				TextHorizontalAlign: chart.TextHorizontalAlignRight,
+			},
+			ValueFormatter: getValueFormat(metric),
 			GridMajorStyle: chart.Style{
 				Show:            true,
 				StrokeColor:     chart.ColorAlternateGray,
@@ -586,7 +633,7 @@ Weekly Report(Mail)
 
 ************************************************/
 
-func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string) {
+func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
 	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)
 	log.Printf("SendWeeklyReport ReportPath: %s", g.ReportPath)
 
@@ -617,10 +664,13 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 		Data: attachData,
 	}
 
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
 	msg := &mail.Message{
 		Sender:      sender(),
-		To:          []string{mailReceiver},
-		Subject:     weeklyReportSubject(projectID),
+		To:          mailReceivers,
+		Subject:     weeklyReportSubject(projectID, startDate),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -633,8 +683,11 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	}
 }
 
-func weeklyReportSubject(projectID string) string {
-	return fmt.Sprintf("Weekly report: %s", projectID)
+func weeklyReportSubject(projectID string, startDate time.Time) string {
+	endDate := startDate.AddDate(0, 0, 7)
+	title := fmt.Sprintf("Metrics Weekly Report %s - %s: %s", startDate.Format("2006/01/02"), endDate.Format("2006/01/02"), projectID)
+
+	return title
 }
 
 /************************************************
@@ -643,7 +696,7 @@ Monthly Report(Mail)
 
 ************************************************/
 
-func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string) {
+func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
 	log.Printf("SendMonthlyReport ReportName: %s", g.ReportName)
 	log.Printf("SendMonthlyReport ReportPath: %s", g.ReportPath)
 
@@ -674,10 +727,13 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		Data: attachData,
 	}
 
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
 	msg := &mail.Message{
 		Sender:      sender(),
-		To:          []string{mailReceiver},
-		Subject:     monthlyReportSubject(projectID),
+		To:          mailReceivers,
+		Subject:     monthlyReportSubject(projectID, startDate),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -690,6 +746,8 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 	}
 }
 
-func monthlyReportSubject(projectID string) string {
-	return fmt.Sprintf("Monthly report: %s", projectID)
+func monthlyReportSubject(projectID string, startDate time.Time) string {
+	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
+
+	return title
 }
