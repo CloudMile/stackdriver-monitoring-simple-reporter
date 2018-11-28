@@ -180,8 +180,6 @@ func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 
 	graph.Render(chart.PNG, w)
 
-	log.Printf("%v", graph.Series[0].GetStyle().Show)
-
 	if err := w.Close(); err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
