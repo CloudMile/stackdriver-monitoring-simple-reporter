@@ -249,7 +249,7 @@ func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
 	for prjIdx := range projectIDs {
 		projectID := projectIDs[prjIdx]
 		metricExporter.ExportWeeklyReport(projectID, es.client.StartTime.In(es.client.Location()))
-		metricExporter.SendWeeklyReport(ctx, projectID, es.conf.MailReceiver)
+		metricExporter.SendWeeklyReport(ctx, projectID, es.conf.MailReceiver, es.client.StartTime.In(es.client.Location()))
 	}
 }
 
@@ -300,6 +300,6 @@ func (es *ExportService) ExportMonthlyReport(ctx context.Context) {
 	for prjIdx := range projectIDs {
 		projectID := projectIDs[prjIdx]
 		metricExporter.ExportMonthlyReport(projectID, es.client.StartTime.In(es.client.Location()))
-		metricExporter.SendMonthlyReport(ctx, projectID, es.conf.MailReceiver)
+		metricExporter.SendMonthlyReport(ctx, projectID, es.conf.MailReceiver, es.client.StartTime.In(es.client.Location()))
 	}
 }

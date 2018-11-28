@@ -635,7 +635,7 @@ Weekly Report(Mail)
 
 ************************************************/
 
-func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string) {
+func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
 	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)
 	log.Printf("SendWeeklyReport ReportPath: %s", g.ReportPath)
 
@@ -672,7 +672,7 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	msg := &mail.Message{
 		Sender:      sender(),
 		To:          mailReceivers,
-		Subject:     weeklyReportSubject(projectID),
+		Subject:     weeklyReportSubject(projectID, startDate),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -685,8 +685,11 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	}
 }
 
-func weeklyReportSubject(projectID string) string {
-	return fmt.Sprintf("Weekly report: %s", projectID)
+func weeklyReportSubject(projectID string, startDate time.Time) string {
+	endDate := startDate.AddDate(0, 0, 7)
+	title := fmt.Sprintf("Metrics Weekly Report %s - %s: %s", startDate.Format("2006/01/02"), endDate.Format("2006/01/02"), projectID)
+
+	return title
 }
 
 /************************************************
@@ -695,7 +698,7 @@ Monthly Report(Mail)
 
 ************************************************/
 
-func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string) {
+func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
 	log.Printf("SendMonthlyReport ReportName: %s", g.ReportName)
 	log.Printf("SendMonthlyReport ReportPath: %s", g.ReportPath)
 
@@ -732,7 +735,7 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 	msg := &mail.Message{
 		Sender:      sender(),
 		To:          mailReceivers,
-		Subject:     monthlyReportSubject(projectID),
+		Subject:     monthlyReportSubject(projectID, startDate),
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -745,6 +748,8 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 	}
 }
 
-func monthlyReportSubject(projectID string) string {
-	return fmt.Sprintf("Monthly report: %s", projectID)
+func monthlyReportSubject(projectID string, startDate time.Time) string {
+	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
+
+	return title
 }
