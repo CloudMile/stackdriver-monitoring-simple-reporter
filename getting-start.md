@@ -12,6 +12,8 @@ gcloud config get-value project
 
 If the project id is not your want, you can change it.
 
+Replace `<PROJECT_ID>`.
+
 ```shell
 gcloud config set project <PROJECT_ID>
 ```
@@ -32,13 +34,13 @@ If you don't any GCS bucket, or you want create a new bucket. Execute below comm
 Replace `<GCS_BUCKET_NAME>`.
 
 ```shell
-gsutil mb <GCS_BUCKET_NAME>
+gsutil mb gs://<GCS_BUCKET_NAME>
 ```
 
 Quick Example:
 
 ```shell
-gsutil mb "${DEVSHELL_PROJECT_ID}-sdm-report"
+gsutil mb "gs://${DEVSHELL_PROJECT_ID}-sdm-report"
 ```
 
 ## Setup application
