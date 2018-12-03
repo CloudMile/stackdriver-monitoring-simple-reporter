@@ -54,8 +54,8 @@ func (c *MonitoringClient) SetWeekly() {
 	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
 	c.IntervalStartTime = c.StartTime.Format("2006-01-02T15:04:05.000000000Z")
 
-	log.Printf("%s", c.IntervalEndTime)
-	log.Printf("%s", c.IntervalStartTime)
+	log.Printf("IntervalEndTime  : %s", c.IntervalEndTime)
+	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = HoursOfOneWeek
 
@@ -68,13 +68,13 @@ func (c *MonitoringClient) SetMonthly() {
 	now := time.Now().In(local)
 
 	c.EndTime = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, local).UTC()
-	c.StartTime = c.EndTime.AddDate(0, -1, -1)
+	c.StartTime = c.EndTime.AddDate(0, 0, -c.EndTime.Day())
 
 	c.IntervalEndTime = c.EndTime.Format("2006-01-02T15:04:05.000000000Z")
 	c.IntervalStartTime = c.StartTime.Format("2006-01-02T15:04:05.000000000Z")
 
-	log.Printf("%s", c.IntervalEndTime)
-	log.Printf("%s", c.IntervalStartTime)
+	log.Printf("IntervalEndTime  : %s", c.IntervalEndTime)
+	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = c.EndTime.AddDate(0, 0, -1).Day() * 24
 
