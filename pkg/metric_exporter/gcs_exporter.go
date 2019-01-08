@@ -178,9 +178,10 @@ func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 	obj := bh.Object(filename)
 	w := obj.NewWriter(ctx)
 
-	graph.Render(chart.PNG, w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
+	err = graph.Render(chart.PNG, w)
+	if err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
 }
