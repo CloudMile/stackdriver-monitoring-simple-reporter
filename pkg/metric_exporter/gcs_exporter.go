@@ -475,9 +475,10 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
 
-	pdf.Output(w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
+	err = pdf.Output(w)
+	if err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
 }
@@ -593,9 +594,10 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
 
-	pdf.Output(w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
+	err = pdf.Output(w)
+	if err != nil {
 		log.Fatalf("Failed to export metrics: %v", err)
 	}
 }
