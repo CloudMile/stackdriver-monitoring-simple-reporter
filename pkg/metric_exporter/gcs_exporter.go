@@ -614,26 +614,9 @@ func sender() string {
 	return fmt.Sprintf("GCP Report System<noreply@%s.appspotmail.com>", os.Getenv("GOOGLE_CLOUD_PROJECT"))
 }
 
-/************************************************
-
-Weekly Report(Mail)
-
-************************************************/
-
-func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
-	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)
-	log.Printf("SendWeeklyReport ReportPath: %s", g.ReportPath)
-
-	if g.ReportPath == "" {
-		return
-	}
-
-	attach := g.getAttachment()
-
+func sendMail(appCtx context.Context, subject string, mailReceiver string, attach mail.Attachment) {
 	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
 	mailReceivers := strings.Split(mailReceiver, ",")
-
-	subject := weeklyReportSubject(projectID, startDate)
 
 	msg := &mail.Message{
 		Sender:      sender(),
@@ -649,6 +632,26 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 	} else {
 		log.Printf("%s Report mail sent!", subject)
 	}
+}
+
+/************************************************
+
+Weekly Report(Mail)
+
+************************************************/
+
+func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailReceiver string, startDate time.Time) {
+	log.Printf("SendWeeklyReport ReportName: %s", g.ReportName)
+	log.Printf("SendWeeklyReport ReportPath: %s", g.ReportPath)
+
+	if g.ReportPath == "" {
+		return
+	}
+
+	subject := weeklyReportSubject(projectID, startDate)
+	attach := g.getAttachment()
+
+	sendMail(appCtx, subject, mailReceiver, attach)
 }
 
 func weeklyReportSubject(projectID string, startDate time.Time) string {
@@ -672,27 +675,10 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		return
 	}
 
+	subject := monthlyReportSubject(projectID, startDate)
 	attach := g.getAttachment()
 
-	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
-	mailReceivers := strings.Split(mailReceiver, ",")
-
-	subject := monthlyReportSubject(projectID, startDate)
-
-	msg := &mail.Message{
-		Sender:      sender(),
-		To:          mailReceivers,
-		Subject:     subject,
-		Body:        "You got report.",
-		Attachments: []mail.Attachment{attach},
-	}
-	if err := mail.Send(appCtx, msg); err != nil {
-		log.Printf("Sender: %s", msg.Sender)
-		log.Printf("To: %s", mailReceiver)
-		log.Fatalf("Couldn't send email: %v", err)
-	} else {
-		log.Printf("%s Report mail sent!", subject)
-	}
+	sendMail(appCtx, subject, mailReceiver, attach)
 }
 
 func monthlyReportSubject(projectID string, startDate time.Time) string {
