@@ -40,8 +40,6 @@ func NewGCSExporter(c utils.Conf) MetricExporter {
 }
 
 func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
-	log.Printf("Points len: %d", len(metricPoints))
-
 	content := fmt.Sprintf("%s\n%s", stackdriver.PointCSVHeader, strings.Join(metricPoints, "\n"))
 	r := strings.NewReader(content)
 
@@ -55,10 +53,10 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 	obj := bh.Object(filename)
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, r); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export metrics to csv: %v", err)
 	}
 	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export metrics to csv(Close buffer): %v", err)
 	}
 }
 
@@ -147,7 +145,7 @@ func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 
 	err = graph.Render(chart.PNG, w)
 	if err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export metrics grpah(%s): %v", filename, err)
 	}
 }
 
@@ -158,7 +156,6 @@ Weekly Report(PNG)
 ************************************************/
 
 func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64, totalHour int) {
-
 	graph := chart.Chart{
 		Background: chart.Style{
 			Padding: chart.Box{
@@ -487,7 +484,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 
 	err = pdf.Output(w)
 	if err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export weekly report: %v", err)
 	}
 }
 
@@ -582,7 +579,7 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 
 	err = pdf.Output(w)
 	if err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export monthly report: %v", err)
 	}
 }
 

@@ -58,8 +58,6 @@ func (c *MonitoringClient) SetWeekly() {
 	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = HoursOfOneWeek
-
-	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 // Previous month
@@ -77,8 +75,6 @@ func (c *MonitoringClient) SetMonthly() {
 	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = c.EndTime.AddDate(0, 0, -1).Day() * 24
-
-	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 func (c *MonitoringClient) Location() *time.Location {
@@ -216,9 +212,6 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 			return
 		}
 	}
-
-	metricPoints = c.pointsToMetricPoints([]*monitoring.Point{})
-	xValues, yValues = c.pointsToXY([]*monitoring.Point{})
 
 	return
 }

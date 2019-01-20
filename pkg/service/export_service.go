@@ -116,7 +116,6 @@ func (es *ExportService) exportInstanceGCPMetrics(ctx context.Context, projectID
 	for mIdx := range monitoringMetrics {
 		metric := monitoringMetrics[mIdx]
 
-		log.Printf("es.client.GetInstanceNames")
 		instanceNames := es.client.GetInstanceNames(projectID, metric)
 
 		for instIdx := range instanceNames {
