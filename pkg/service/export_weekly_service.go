@@ -12,7 +12,7 @@ Weekly Export Stuff
 ************************************************/
 
 func (es *ExportService) ExportWeeklyStuff(projectID, metric, aligner, filter, instanceName string) {
-	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
+	points, xValues, yValues := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
 
 	if len(points) == 0 {
 		return
@@ -20,8 +20,6 @@ func (es *ExportService) ExportWeeklyStuff(projectID, metric, aligner, filter, i
 
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportWeeklyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
-
-	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
 	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
 }
 

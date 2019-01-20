@@ -12,7 +12,7 @@ Monthly Export Stuff
 ************************************************/
 
 func (es *ExportService) ExportMonthlyStuff(projectID, metric, aligner, filter, instanceName string) {
-	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
+	points, xValues, yValues := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
 
 	if len(points) == 0 {
 		return
@@ -20,8 +20,6 @@ func (es *ExportService) ExportMonthlyStuff(projectID, metric, aligner, filter, 
 
 	metricExporter := es.newMetricExporter()
 	metricExporter.ExportMonthlyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
-
-	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
 	metricExporter.ExportMonthlyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
 }
 
