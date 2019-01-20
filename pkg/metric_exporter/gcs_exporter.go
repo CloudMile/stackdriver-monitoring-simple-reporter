@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -339,6 +340,11 @@ Report Helper(PDF)
 
 ************************************************/
 
+type GraphReaders struct {
+	cpuReader *ImageReader
+	memReader *ImageReader
+}
+
 type ImageReader struct {
 	Path   string
 	Reader *storage.Reader
@@ -349,25 +355,19 @@ func (ir ImageReader) ImageTitle() string {
 	return r.FindString(ir.Path)
 }
 
-/************************************************
+func (ir ImageReader) ImageInstanceName() string {
+	r, _ := regexp.Compile(`\[(\w|-)+\]`)
+	return r.FindAllString(ir.Path, -1)[0]
+}
 
-Weekly Report(PDF)
+func (ir ImageReader) ImageMetricType() string {
+	r, _ := regexp.Compile(`\[(\w|-)+\]`)
+	return r.FindAllString(ir.Path, -1)[1]
+}
 
-************************************************/
-
-func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-
-	bh := client.Bucket(g.BucketName)
-
-	basePath := basePathOfWeeklyReportStuff(projectID, "weekly", startDate)
-	log.Printf("basePath: %s", basePath)
-
-	readers := make([]ImageReader, 0)
+func (g *GCSExporter) GetImageReaderMaps(ctx context.Context, bh *storage.BucketHandle, basePath string) ([]string, map[string]*GraphReaders) {
+	var keys []string
+	imageReaderMaps := make(map[string]*GraphReaders)
 
 	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
 	it := bh.Objects(ctx, q)
@@ -388,14 +388,54 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 			if err != nil {
 				log.Fatalf("Failed to generate report: %v", err)
 			}
-			defer reader.Close()
 
-			readers = append(readers, ImageReader{
+			imageReader := ImageReader{
 				Path:   objAttrs.Name,
 				Reader: reader,
-			})
+			}
+
+			instanceName := imageReader.ImageInstanceName()
+			metricType := imageReader.ImageMetricType()
+
+			imageReaderMap, ok := imageReaderMaps[instanceName]
+			if !ok {
+				imageReaderMap = &GraphReaders{}
+				keys = append(keys, instanceName)
+			}
+			// cpu
+			if "[cpu_usage_time]" == metricType {
+				imageReaderMap.cpuReader = &imageReader
+				// mem
+			} else {
+				imageReaderMap.memReader = &imageReader
+			}
+			imageReaderMaps[instanceName] = imageReaderMap
 		}
 	}
+
+	sort.Strings(keys)
+	return keys, imageReaderMaps
+}
+
+/************************************************
+
+Weekly Report(PDF)
+
+************************************************/
+
+func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+
+	basePath := basePathOfWeeklyReportStuff(projectID, "weekly", startDate)
+	log.Printf("basePath: %s", basePath)
+
+	keys, imageReaderMaps := g.GetImageReaderMaps(ctx, bh, basePath)
 
 	// Generate report
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -408,7 +448,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	// Pages
 	pdf.SetFont("Times", "B", 16)
 
-	readersLen := len(readers)
+	readersLen := len(imageReaderMaps)
 
 	// No output
 	if readersLen == 0 {
@@ -417,20 +457,24 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 		return
 	}
 
-	for i := 0; i < readersLen; i += 2 {
+	for _, key := range keys {
 		pdf.AddPage()
 
-		cpuReader := readers[i]
-		memReader := readers[i+1]
+		imageReaderMap := imageReaderMaps[key]
+		cpuReader := imageReaderMap.cpuReader
 
+		defer cpuReader.Reader.Close()
 		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
-		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
-
 		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
 		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
 
-		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
-		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		memReader := imageReaderMap.memReader
+		if memReader != nil {
+			defer memReader.Reader.Close()
+			_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+			pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+			pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		}
 	}
 
 	// Upload report
@@ -486,35 +530,7 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	basePath := basePathOfMonthlyReportStuff(projectID, "monthly", startDate)
 	log.Printf("basePath: %s", basePath)
 
-	readers := make([]ImageReader, 0)
-
-	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
-	it := bh.Objects(ctx, q)
-	for {
-		objAttrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Fatalf("Failed to list files: %v", err)
-		}
-
-		if strings.HasSuffix(objAttrs.Name, ".png") {
-			log.Printf("%s", objAttrs.Name)
-
-			png := bh.Object(objAttrs.Name)
-			reader, err := png.NewReader(ctx)
-			if err != nil {
-				log.Fatalf("Failed to generate report: %v", err)
-			}
-			defer reader.Close()
-
-			readers = append(readers, ImageReader{
-				Path:   objAttrs.Name,
-				Reader: reader,
-			})
-		}
-	}
+	keys, imageReaderMaps := g.GetImageReaderMaps(ctx, bh, basePath)
 
 	// Generate report
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -527,7 +543,7 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	// Pages
 	pdf.SetFont("Times", "B", 16)
 
-	readersLen := len(readers)
+	readersLen := len(imageReaderMaps)
 
 	// No output
 	if readersLen == 0 {
@@ -536,20 +552,24 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 		return
 	}
 
-	for i := 0; i < readersLen; i += 2 {
+	for _, key := range keys {
 		pdf.AddPage()
 
-		cpuReader := readers[i]
-		memReader := readers[i+1]
+		imageReaderMap := imageReaderMaps[key]
+		cpuReader := imageReaderMap.cpuReader
 
+		defer cpuReader.Reader.Close()
 		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
-		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
-
 		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
 		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
 
-		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
-		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		memReader := imageReaderMap.memReader
+		if memReader != nil {
+			defer memReader.Reader.Close()
+			_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+			pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+			pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		}
 	}
 
 	// Upload report
