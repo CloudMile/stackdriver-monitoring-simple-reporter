@@ -15,9 +15,10 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/appengine/mail"
 
-	"cloud.google.com/go/storage"
 	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
 	"stackdriver-monitoring-simple-reporter/pkg/utils"
+
+	"cloud.google.com/go/storage"
 
 	"github.com/wcharczuk/go-chart"
 	"github.com/wcharczuk/go-chart/drawing"
@@ -62,46 +63,9 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 
 func getValueFormat(metric string) chart.ValueFormatter {
 	if "compute.googleapis.com/instance/cpu/usage_time" == metric {
-		return CPUValueFormatter
+		return utils.CPUValueFormatter
 	}
-	return MemoryValueFormatter
-}
-
-func CPUValueFormatter(v interface{}) string {
-	typed, _ := v.(float64)
-	unit := "ms/s"
-
-	if typed > 1000 {
-		typed = typed / 1000
-		unit = " s/s"
-	}
-
-	return fmt.Sprintf("+%6.2f%s", typed, unit)
-}
-
-func MemoryValueFormatter(v interface{}) string {
-	typed, _ := v.(float64)
-	unit := " B"
-
-	// KB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "KB"
-	}
-
-	// MB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "MB"
-	}
-
-	// GB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "GB"
-	}
-
-	return fmt.Sprintf("+%8.2f%s", typed, unit)
+	return utils.MemoryValueFormatter
 }
 
 /************************************************
@@ -644,36 +608,17 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 		return
 	}
 
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-
-	bh := client.Bucket(g.BucketName)
-	obj := bh.Object(g.ReportPath)
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		log.Fatalf("Couldn't create reader: %v", err)
-	}
-
-	attachData, err := ioutil.ReadAll(r)
-	if err != nil {
-		log.Fatalf("Couldn't read report: %v", err)
-	}
-
-	attach := mail.Attachment{
-		Name: g.ReportName,
-		Data: attachData,
-	}
+	attach := g.getAttachment()
 
 	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
 	mailReceivers := strings.Split(mailReceiver, ",")
 
+	subject := weeklyReportSubject(projectID, startDate)
+
 	msg := &mail.Message{
 		Sender:      sender(),
 		To:          mailReceivers,
-		Subject:     weeklyReportSubject(projectID, startDate),
+		Subject:     subject,
 		Body:        "You got report.",
 		Attachments: []mail.Attachment{attach},
 	}
@@ -682,7 +627,7 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 		log.Printf("To: %s", mailReceiver)
 		log.Fatalf("Couldn't send email: %v", err)
 	} else {
-		log.Printf("Report mail sent!")
+		log.Printf("%s Report mail sent!", subject)
 	}
 }
 
@@ -707,6 +652,42 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		return
 	}
 
+	attach := g.getAttachment()
+
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
+	subject := monthlyReportSubject(projectID, startDate)
+
+	msg := &mail.Message{
+		Sender:      sender(),
+		To:          mailReceivers,
+		Subject:     subject,
+		Body:        "You got report.",
+		Attachments: []mail.Attachment{attach},
+	}
+	if err := mail.Send(appCtx, msg); err != nil {
+		log.Printf("Sender: %s", msg.Sender)
+		log.Printf("To: %s", mailReceiver)
+		log.Fatalf("Couldn't send email: %v", err)
+	} else {
+		log.Printf("%s Report mail sent!", subject)
+	}
+}
+
+func monthlyReportSubject(projectID string, startDate time.Time) string {
+	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
+
+	return title
+}
+
+/************************************************
+
+Mail Attachment
+
+************************************************/
+
+func (g *GCSExporter) getAttachment() mail.Attachment {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -725,32 +706,8 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		log.Fatalf("Couldn't read report: %v", err)
 	}
 
-	attach := mail.Attachment{
+	return mail.Attachment{
 		Name: g.ReportName,
 		Data: attachData,
 	}
-
-	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
-	mailReceivers := strings.Split(mailReceiver, ",")
-
-	msg := &mail.Message{
-		Sender:      sender(),
-		To:          mailReceivers,
-		Subject:     monthlyReportSubject(projectID, startDate),
-		Body:        "You got report.",
-		Attachments: []mail.Attachment{attach},
-	}
-	if err := mail.Send(appCtx, msg); err != nil {
-		log.Printf("Sender: %s", msg.Sender)
-		log.Printf("To: %s", mailReceiver)
-		log.Fatalf("Couldn't send email: %v", err)
-	} else {
-		log.Printf("Report mail sent!")
-	}
-}
-
-func monthlyReportSubject(projectID string, startDate time.Time) string {
-	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
-
-	return title
 }
