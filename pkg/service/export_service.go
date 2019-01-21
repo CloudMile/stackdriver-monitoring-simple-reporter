@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"google.golang.org/appengine/taskqueue"
 	"log"
+
+	"google.golang.org/appengine/taskqueue"
 
 	"stackdriver-monitoring-simple-reporter/pkg/gcp"
 	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
@@ -115,7 +116,6 @@ func (es *ExportService) exportInstanceGCPMetrics(ctx context.Context, projectID
 	for mIdx := range monitoringMetrics {
 		metric := monitoringMetrics[mIdx]
 
-		log.Printf("es.client.GetInstanceNames")
 		instanceNames := es.client.GetInstanceNames(projectID, metric)
 
 		for instIdx := range instanceNames {
@@ -200,106 +200,5 @@ func (es *ExportService) ExportStuff(projectID, metric, aligner, filter, instanc
 			filter,
 			instanceName,
 		)
-	}
-}
-
-/************************************************
-
-Weekly Export Stuff
-
-************************************************/
-
-func (es *ExportService) ExportWeeklyStuff(projectID, metric, aligner, filter, instanceName string) {
-	es.ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName)
-	es.ExportWeeklyMetricsGraph(projectID, metric, aligner, filter, instanceName)
-}
-
-func (es *ExportService) ExportWeeklyMetrics(projectID, metric, aligner, filter, instanceName string) {
-	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
-
-	if len(points) == 0 {
-		return
-	}
-	metricExporter := es.newMetricExporter()
-	metricExporter.ExportWeeklyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
-}
-
-func (es *ExportService) ExportWeeklyMetricsGraph(projectID, metric, aligner, filter, instanceName string) {
-	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
-
-	if len(xValues) == 0 {
-		return
-	}
-
-	metricExporter := es.newMetricExporter()
-	metricExporter.ExportWeeklyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
-}
-
-/************************************************
-
-Weekly Send Report
-
-************************************************/
-
-func (es *ExportService) ExportWeeklyReport(ctx context.Context) {
-	metricExporter := es.newMetricExporter()
-
-	projectIDs := gcp.GetProjects(ctx)
-
-	for prjIdx := range projectIDs {
-		projectID := projectIDs[prjIdx]
-		metricExporter.ExportWeeklyReport(projectID, es.client.StartTime.In(es.client.Location()))
-		metricExporter.SendWeeklyReport(ctx, projectID, es.conf.MailReceiver, es.client.StartTime.In(es.client.Location()))
-	}
-}
-
-/************************************************
-
-Monthly Export Stuff
-
-************************************************/
-
-func (es *ExportService) ExportMonthlyStuff(projectID, metric, aligner, filter, instanceName string) {
-	es.ExportMonthlyMetrics(projectID, metric, aligner, filter, instanceName)
-	es.ExportMonthlyMetricsGraph(projectID, metric, aligner, filter, instanceName)
-}
-
-func (es *ExportService) ExportMonthlyMetrics(projectID, metric, aligner, filter, instanceName string) {
-	points := es.client.RetrieveMetricPoints(projectID, metric, aligner, filter)
-
-	if len(points) == 0 {
-		return
-	}
-
-	metricExporter := es.newMetricExporter()
-	metricExporter.ExportMonthlyMetrics(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, points)
-}
-
-func (es *ExportService) ExportMonthlyMetricsGraph(projectID, metric, aligner, filter, instanceName string) {
-	xValues, yValues := es.client.RetrieveMetricPointsXY(projectID, metric, aligner, filter)
-
-	if len(xValues) == 0 {
-		return
-	}
-
-	metricExporter := es.newMetricExporter()
-	metricExporter.ExportMonthlyMetricsChart(es.client.StartTime.In(es.client.Location()), projectID, metric, instanceName, xValues, yValues, es.client.TotalHours)
-}
-
-/************************************************
-
-Monthly Send Report
-
-************************************************/
-
-func (es *ExportService) ExportMonthlyReport(ctx context.Context) {
-	metricExporter := es.newMetricExporter()
-
-	projectIDs := gcp.GetProjects(ctx)
-
-	for prjIdx := range projectIDs {
-		projectID := projectIDs[prjIdx]
-		metricExporter.ExportMonthlyReport(projectID, es.client.StartTime.In(es.client.Location()))
-		metricExporter.SendMonthlyReport(ctx, projectID, es.conf.MailReceiver, es.client.StartTime.In(es.client.Location()))
 	}
 }

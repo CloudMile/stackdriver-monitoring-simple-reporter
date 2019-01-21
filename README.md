@@ -14,7 +14,7 @@ Clone this project
 
 ```shell
 git clone git@github.com:CloudMile/stackdriver-monitoring-simple-reporter.git
-cd stackdriver-monitoring-exporter
+cd stackdriver-monitoring-simple-reporter
 ```
 
 Edit config

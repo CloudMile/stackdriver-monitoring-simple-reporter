@@ -58,8 +58,6 @@ func (c *MonitoringClient) SetWeekly() {
 	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = HoursOfOneWeek
-
-	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 // Previous month
@@ -77,8 +75,6 @@ func (c *MonitoringClient) SetMonthly() {
 	log.Printf("IntervalStartTime: %s", c.IntervalStartTime)
 
 	c.TotalHours = c.EndTime.AddDate(0, 0, -1).Day() * 24
-
-	log.Printf("TotalHours: %d", c.TotalHours)
 }
 
 func (c *MonitoringClient) Location() *time.Location {
@@ -184,7 +180,7 @@ Timeseries List
 
 ************************************************/
 
-func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string) {
+func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filter string) (metricPoints []string, xValues []time.Time, yValues []float64) {
 	client := c.getClient()
 
 	svc, err := monitoring.New(client)
@@ -212,14 +208,19 @@ func (c *MonitoringClient) RetrieveMetricPoints(projectID, metric, aligner, filt
 
 		if len(timeSeries.Points) > 0 {
 			metricPoints = c.pointsToMetricPoints(timeSeries.Points)
+			xValues, yValues = c.pointsToXY(timeSeries.Points)
 			return
 		}
 	}
 
-	metricPoints = c.pointsToMetricPoints([]*monitoring.Point{})
-
 	return
 }
+
+/************************************************
+
+Timeseries CSV point (timestamp,datetime,value)
+
+************************************************/
 
 func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (metricPoints []string) {
 	metricPoints = make([]string, c.TotalHours)
@@ -255,43 +256,6 @@ func (c *MonitoringClient) pointsToMetricPoints(points []*monitoring.Point) (met
 Timeseries Graph point (X, Y)
 
 ************************************************/
-
-func (c *MonitoringClient) RetrieveMetricPointsXY(projectID, metric, aligner, filter string) (xValues []time.Time, yValues []float64) {
-	client := c.getClient()
-
-	svc, err := monitoring.New(client)
-	if err != nil {
-		log.Fatal("RetrieveMetricPoints: ", err.Error())
-	}
-
-	project := "projects/" + projectID
-
-	projectsTimeSeriesListCall := svc.Projects.TimeSeries.List(project)
-	projectsTimeSeriesListCall.Filter(filter)
-	projectsTimeSeriesListCall.IntervalStartTime(c.IntervalStartTime)
-	projectsTimeSeriesListCall.IntervalEndTime(c.IntervalEndTime)
-	projectsTimeSeriesListCall.AggregationPerSeriesAligner(aligner)
-	projectsTimeSeriesListCall.AggregationAlignmentPeriod(AggregationAlignmentPeriod)
-
-	listResp, err := projectsTimeSeriesListCall.Do()
-	if err != nil {
-		log.Fatal("RetrieveMetricPoints projectsTimeSeriesListCall: ", err.Error())
-	}
-
-	// Only get the first timeseries
-	if len(listResp.TimeSeries) > 0 {
-		timeSeries := listResp.TimeSeries[0]
-
-		if len(timeSeries.Points) > 0 {
-			xValues, yValues = c.pointsToXY(timeSeries.Points)
-			return
-		}
-	}
-
-	xValues, yValues = c.pointsToXY([]*monitoring.Point{})
-
-	return
-}
 
 func (c *MonitoringClient) pointsToXY(points []*monitoring.Point) (xValues []time.Time, yValues []float64) {
 	xValues = make([]time.Time, c.TotalHours)

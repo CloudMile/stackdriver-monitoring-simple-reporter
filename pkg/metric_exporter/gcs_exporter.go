@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,9 +16,10 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/appengine/mail"
 
-	"cloud.google.com/go/storage"
 	"stackdriver-monitoring-simple-reporter/pkg/gcp/stackdriver"
 	"stackdriver-monitoring-simple-reporter/pkg/utils"
+
+	"cloud.google.com/go/storage"
 
 	"github.com/wcharczuk/go-chart"
 	"github.com/wcharczuk/go-chart/drawing"
@@ -38,8 +40,6 @@ func NewGCSExporter(c utils.Conf) MetricExporter {
 }
 
 func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string) {
-	log.Printf("Points len: %d", len(metricPoints))
-
 	content := fmt.Sprintf("%s\n%s", stackdriver.PointCSVHeader, strings.Join(metricPoints, "\n"))
 	r := strings.NewReader(content)
 
@@ -53,55 +53,18 @@ func (g *GCSExporter) saveTimeSeriesToCSV(filename string, metricPoints []string
 	obj := bh.Object(filename)
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, r); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export metrics to csv: %v", err)
 	}
 	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+		log.Fatalf("Failed to export metrics to csv(Close buffer): %v", err)
 	}
 }
 
 func getValueFormat(metric string) chart.ValueFormatter {
 	if "compute.googleapis.com/instance/cpu/usage_time" == metric {
-		return CPUValueFormatter
+		return utils.CPUValueFormatter
 	}
-	return MemoryValueFormatter
-}
-
-func CPUValueFormatter(v interface{}) string {
-	typed, _ := v.(float64)
-	unit := "ms/s"
-
-	if typed > 1000 {
-		typed = typed / 1000
-		unit = " s/s"
-	}
-
-	return fmt.Sprintf("+%6.2f%s", typed, unit)
-}
-
-func MemoryValueFormatter(v interface{}) string {
-	typed, _ := v.(float64)
-	unit := " B"
-
-	// KB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "KB"
-	}
-
-	// MB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "MB"
-	}
-
-	// GB
-	if typed > 1000 {
-		typed = typed / 1024
-		unit = "GB"
-	}
-
-	return fmt.Sprintf("+%8.2f%s", typed, unit)
+	return utils.MemoryValueFormatter
 }
 
 /************************************************
@@ -178,10 +141,11 @@ func (g *GCSExporter) saveTimeSeriesToPNG(filename string, graph chart.Chart) {
 	obj := bh.Object(filename)
 	w := obj.NewWriter(ctx)
 
-	graph.Render(chart.PNG, w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+	err = graph.Render(chart.PNG, w)
+	if err != nil {
+		log.Fatalf("Failed to export metrics grpah(%s): %v", filename, err)
 	}
 }
 
@@ -192,7 +156,6 @@ Weekly Report(PNG)
 ************************************************/
 
 func (g *GCSExporter) ExportWeeklyMetricsChart(startDate time.Time, projectID, metric, instanceName string, xValues []time.Time, yValues []float64, totalHour int) {
-
 	graph := chart.Chart{
 		Background: chart.Style{
 			Padding: chart.Box{
@@ -374,6 +337,11 @@ Report Helper(PDF)
 
 ************************************************/
 
+type GraphReaders struct {
+	cpuReader *ImageReader
+	memReader *ImageReader
+}
+
 type ImageReader struct {
 	Path   string
 	Reader *storage.Reader
@@ -384,25 +352,19 @@ func (ir ImageReader) ImageTitle() string {
 	return r.FindString(ir.Path)
 }
 
-/************************************************
+func (ir ImageReader) ImageInstanceName() string {
+	r, _ := regexp.Compile(`\[(\w|-)+\]`)
+	return r.FindAllString(ir.Path, -1)[0]
+}
 
-Weekly Report(PDF)
+func (ir ImageReader) ImageMetricType() string {
+	r, _ := regexp.Compile(`\[(\w|-)+\]`)
+	return r.FindAllString(ir.Path, -1)[1]
+}
 
-************************************************/
-
-func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-
-	bh := client.Bucket(g.BucketName)
-
-	basePath := basePathOfWeeklyReportStuff(projectID, "weekly", startDate)
-	log.Printf("basePath: %s", basePath)
-
-	readers := make([]ImageReader, 0)
+func (g *GCSExporter) GetImageReaderMaps(ctx context.Context, bh *storage.BucketHandle, basePath string) ([]string, map[string]*GraphReaders) {
+	var keys []string
+	imageReaderMaps := make(map[string]*GraphReaders)
 
 	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
 	it := bh.Objects(ctx, q)
@@ -423,14 +385,54 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 			if err != nil {
 				log.Fatalf("Failed to generate report: %v", err)
 			}
-			defer reader.Close()
 
-			readers = append(readers, ImageReader{
+			imageReader := ImageReader{
 				Path:   objAttrs.Name,
 				Reader: reader,
-			})
+			}
+
+			instanceName := imageReader.ImageInstanceName()
+			metricType := imageReader.ImageMetricType()
+
+			imageReaderMap, ok := imageReaderMaps[instanceName]
+			if !ok {
+				imageReaderMap = &GraphReaders{}
+				keys = append(keys, instanceName)
+			}
+			// cpu
+			if "[cpu_usage_time]" == metricType {
+				imageReaderMap.cpuReader = &imageReader
+				// mem
+			} else {
+				imageReaderMap.memReader = &imageReader
+			}
+			imageReaderMaps[instanceName] = imageReaderMap
 		}
 	}
+
+	sort.Strings(keys)
+	return keys, imageReaderMaps
+}
+
+/************************************************
+
+Weekly Report(PDF)
+
+************************************************/
+
+func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bh := client.Bucket(g.BucketName)
+
+	basePath := basePathOfWeeklyReportStuff(projectID, "weekly", startDate)
+	log.Printf("basePath: %s", basePath)
+
+	keys, imageReaderMaps := g.GetImageReaderMaps(ctx, bh, basePath)
 
 	// Generate report
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -443,7 +445,7 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	// Pages
 	pdf.SetFont("Times", "B", 16)
 
-	readersLen := len(readers)
+	readersLen := len(imageReaderMaps)
 
 	// No output
 	if readersLen == 0 {
@@ -452,20 +454,24 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 		return
 	}
 
-	for i := 0; i < readersLen; i += 2 {
+	for _, key := range keys {
 		pdf.AddPage()
 
-		cpuReader := readers[i]
-		memReader := readers[i+1]
+		imageReaderMap := imageReaderMaps[key]
+		cpuReader := imageReaderMap.cpuReader
 
+		defer cpuReader.Reader.Close()
 		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
-		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
-
 		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
 		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
 
-		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
-		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		memReader := imageReaderMap.memReader
+		if memReader != nil {
+			defer memReader.Reader.Close()
+			_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+			pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+			pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		}
 	}
 
 	// Upload report
@@ -474,10 +480,11 @@ func (g *GCSExporter) ExportWeeklyReport(projectID string, startDate time.Time) 
 	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
 
-	pdf.Output(w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+	err = pdf.Output(w)
+	if err != nil {
+		log.Fatalf("Failed to export weekly report: %v", err)
 	}
 }
 
@@ -520,35 +527,7 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	basePath := basePathOfMonthlyReportStuff(projectID, "monthly", startDate)
 	log.Printf("basePath: %s", basePath)
 
-	readers := make([]ImageReader, 0)
-
-	q := &storage.Query{Prefix: fmt.Sprintf("%s/", basePath), Delimiter: "/"}
-	it := bh.Objects(ctx, q)
-	for {
-		objAttrs, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			log.Fatalf("Failed to list files: %v", err)
-		}
-
-		if strings.HasSuffix(objAttrs.Name, ".png") {
-			log.Printf("%s", objAttrs.Name)
-
-			png := bh.Object(objAttrs.Name)
-			reader, err := png.NewReader(ctx)
-			if err != nil {
-				log.Fatalf("Failed to generate report: %v", err)
-			}
-			defer reader.Close()
-
-			readers = append(readers, ImageReader{
-				Path:   objAttrs.Name,
-				Reader: reader,
-			})
-		}
-	}
+	keys, imageReaderMaps := g.GetImageReaderMaps(ctx, bh, basePath)
 
 	// Generate report
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -561,7 +540,7 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	// Pages
 	pdf.SetFont("Times", "B", 16)
 
-	readersLen := len(readers)
+	readersLen := len(imageReaderMaps)
 
 	// No output
 	if readersLen == 0 {
@@ -570,20 +549,24 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 		return
 	}
 
-	for i := 0; i < readersLen; i += 2 {
+	for _, key := range keys {
 		pdf.AddPage()
 
-		cpuReader := readers[i]
-		memReader := readers[i+1]
+		imageReaderMap := imageReaderMaps[key]
+		cpuReader := imageReaderMap.cpuReader
 
+		defer cpuReader.Reader.Close()
 		_ = pdf.RegisterImageOptionsReader(cpuReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, cpuReader.Reader)
-		_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
-
 		pdf.CellFormat(0, 50, cpuReader.ImageTitle(), "", 1, "C", false, 0, "")
 		pdf.Image(cpuReader.Path, 0, 0, -128, 0, true, "png", 0, "")
 
-		pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
-		pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		memReader := imageReaderMap.memReader
+		if memReader != nil {
+			defer memReader.Reader.Close()
+			_ = pdf.RegisterImageOptionsReader(memReader.Path, gofpdf.ImageOptions{ImageType: "png", ReadDpi: true}, memReader.Reader)
+			pdf.CellFormat(0, 50, memReader.ImageTitle(), "", 1, "C", false, 0, "")
+			pdf.Image(memReader.Path, 0, 0, -128, 0, true, "png", 0, "")
+		}
 	}
 
 	// Upload report
@@ -592,10 +575,11 @@ func (g *GCSExporter) ExportMonthlyReport(projectID string, startDate time.Time)
 	obj := bh.Object(g.ReportPath)
 	w := obj.NewWriter(ctx)
 
-	pdf.Output(w)
+	defer w.Close()
 
-	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to export metrics: %v", err)
+	err = pdf.Output(w)
+	if err != nil {
+		log.Fatalf("Failed to export monthly report: %v", err)
 	}
 }
 
@@ -627,6 +611,26 @@ func sender() string {
 	return fmt.Sprintf("GCP Report System<noreply@%s.appspotmail.com>", os.Getenv("GOOGLE_CLOUD_PROJECT"))
 }
 
+func sendMail(appCtx context.Context, subject string, mailReceiver string, attach mail.Attachment) {
+	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
+	mailReceivers := strings.Split(mailReceiver, ",")
+
+	msg := &mail.Message{
+		Sender:      sender(),
+		To:          mailReceivers,
+		Subject:     subject,
+		Body:        "You got report.",
+		Attachments: []mail.Attachment{attach},
+	}
+	if err := mail.Send(appCtx, msg); err != nil {
+		log.Printf("Sender: %s", msg.Sender)
+		log.Printf("To: %s", mailReceiver)
+		log.Fatalf("Couldn't send email: %v", err)
+	} else {
+		log.Printf("%s Report mail sent!", subject)
+	}
+}
+
 /************************************************
 
 Weekly Report(Mail)
@@ -641,46 +645,10 @@ func (g *GCSExporter) SendWeeklyReport(appCtx context.Context, projectID, mailRe
 		return
 	}
 
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
+	subject := weeklyReportSubject(projectID, startDate)
+	attach := g.getAttachment()
 
-	bh := client.Bucket(g.BucketName)
-	obj := bh.Object(g.ReportPath)
-	r, err := obj.NewReader(ctx)
-	if err != nil {
-		log.Fatalf("Couldn't create reader: %v", err)
-	}
-
-	attachData, err := ioutil.ReadAll(r)
-	if err != nil {
-		log.Fatalf("Couldn't read report: %v", err)
-	}
-
-	attach := mail.Attachment{
-		Name: g.ReportName,
-		Data: attachData,
-	}
-
-	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
-	mailReceivers := strings.Split(mailReceiver, ",")
-
-	msg := &mail.Message{
-		Sender:      sender(),
-		To:          mailReceivers,
-		Subject:     weeklyReportSubject(projectID, startDate),
-		Body:        "You got report.",
-		Attachments: []mail.Attachment{attach},
-	}
-	if err := mail.Send(appCtx, msg); err != nil {
-		log.Printf("Sender: %s", msg.Sender)
-		log.Printf("To: %s", mailReceiver)
-		log.Fatalf("Couldn't send email: %v", err)
-	} else {
-		log.Printf("Report mail sent!")
-	}
+	sendMail(appCtx, subject, mailReceiver, attach)
 }
 
 func weeklyReportSubject(projectID string, startDate time.Time) string {
@@ -704,6 +672,25 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		return
 	}
 
+	subject := monthlyReportSubject(projectID, startDate)
+	attach := g.getAttachment()
+
+	sendMail(appCtx, subject, mailReceiver, attach)
+}
+
+func monthlyReportSubject(projectID string, startDate time.Time) string {
+	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
+
+	return title
+}
+
+/************************************************
+
+Mail Attachment
+
+************************************************/
+
+func (g *GCSExporter) getAttachment() mail.Attachment {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -722,32 +709,8 @@ func (g *GCSExporter) SendMonthlyReport(appCtx context.Context, projectID, mailR
 		log.Fatalf("Couldn't read report: %v", err)
 	}
 
-	attach := mail.Attachment{
+	return mail.Attachment{
 		Name: g.ReportName,
 		Data: attachData,
 	}
-
-	mailReceiver = strings.Replace(mailReceiver, " ", "", -1)
-	mailReceivers := strings.Split(mailReceiver, ",")
-
-	msg := &mail.Message{
-		Sender:      sender(),
-		To:          mailReceivers,
-		Subject:     monthlyReportSubject(projectID, startDate),
-		Body:        "You got report.",
-		Attachments: []mail.Attachment{attach},
-	}
-	if err := mail.Send(appCtx, msg); err != nil {
-		log.Printf("Sender: %s", msg.Sender)
-		log.Printf("To: %s", mailReceiver)
-		log.Fatalf("Couldn't send email: %v", err)
-	} else {
-		log.Printf("Report mail sent!")
-	}
-}
-
-func monthlyReportSubject(projectID string, startDate time.Time) string {
-	title := fmt.Sprintf("Metrics Monthly Report %s: %s", startDate.Format("2006/01"), projectID)
-
-	return title
 }

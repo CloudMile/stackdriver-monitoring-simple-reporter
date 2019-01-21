@@ -3,6 +3,9 @@ cron:
   url: /cron/weekly-report-stuff
   schedule: every monday 03:10
   timezone: Asia/Taipei
+  retry_parameters:
+    min_backoff_seconds: 2.5
+    max_doublings: 5
 
 - description: "Weekly metrics report job"
   url: /cron/weekly-report
@@ -13,6 +16,9 @@ cron:
   url: /cron/monthly-report-stuff
   schedule: 1 of month 03:10
   timezone: Asia/Taipei
+  retry_parameters:
+    min_backoff_seconds: 2.5
+    max_doublings: 5
 
 - description: "Monthly metrics report job"
   url: /cron/monthly-report
